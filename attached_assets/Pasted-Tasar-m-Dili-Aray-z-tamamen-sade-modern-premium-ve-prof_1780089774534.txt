@@ -1,0 +1,27 @@
+Tasarım Dili: Arayüz tamamen sade, modern, premium ve profesyonel bir çizgide tasarlanacaktır; ana renk olarak #2E7D32 (Kurumsal Yeşil) kullanılacaktır.
+
+Logo Kimliği: Logo, bulut veya karmaşık grafik içermeyen, minimalist, çizgisel ve modern bir "ağaç" ikonundan oluşacaktır.
+
+Kullanıcı Roller: Sistem Yönetici, Sakin, Güvenlik ve Esnaf olmak üzere dört ana rol üzerine kurulacak ve giriş ekranında bu roller net bir şekilde ayrıştırılacaktır.
+
+Multi-Tenant (Çoklu Site) Yapısı: Her yönetici kayıt olduğunda kendi benzersiz site adını oluşturacak ve sakinler yalnızca mevcut sitelerden birini seçerek sisteme dahil olacaktır.
+
+Kullanıcı Onayı: Kayıt olan her kullanıcı "beklemede" statüsünde sisteme düşecek; yönetici tarafından onaylanmadığı sürece hiçbir kullanıcı sisteme giriş yapamayacaktır.
+
+Bildirim Kategorizasyonu: Bildirimler; gürültü (daireye özel), kargo (güvenliğe) ve genel duyuru (tüm siteye) şeklinde kategorize edilerek hedeflenmiş şekilde iletilecektir.
+
+Spam Kontrolü: Bildirim gönderimlerinde sistem, kullanıcıları spam koruması kapsamında belirli limitlerle sınırlayarak gereksiz trafiği engelleyecektir.
+
+KVKK Uyumluluğu: Sohbet sistemi üzerinden paylaşılan telefon numarası gibi hassas veriler, sistem tarafından otomatik olarak algılanıp maskelenecektir.
+
+Dinamik Paneller: Kullanıcılar giriş yaptıktan sonra rolleriyle eşleşen; aidat takibi, esnaf erişimi veya kargo yönetimi gibi kendilerine özel panellere yönlendirilecektir.
+
+Finansal Yönetim: Yönetici tarafından tanımlanan aidat ve ek giderler, otomatik olarak tüm sakinlerin ödeme paneline yansıtılacak ve kullanıcılar buradan ödeme yapabilecektir.
+
+Esnaf Paneli: Esnaflar kendi hizmetlerini tanıtıp görsel ekleyebilecek, konum paylaşabilecek ve sakinlerden gelen çağrı taleplerini yönetebilecektir.
+
+Güvenlik İş Akışı: Güvenlik görevlileri için; kargo teslimat takibi, esnaf yönlendirme ve site içi trafik yönetimi odaklı özel bir iş akışı tanımlanacaktır.
+
+Yönetici Kontrolü: Yönetici paneli, tüm gelir-gider takibinin, kullanıcı onaylarının ve site içi bildirim akışının merkez noktası olacaktır.
+
+Performans ve Deneyim: Arayüzler mobil öncelikli tasarlanacak; her ekran gereksiz karmaşadan arındırılıp tek bir amaca hizmet edecek şekilde optimize edilecektir.

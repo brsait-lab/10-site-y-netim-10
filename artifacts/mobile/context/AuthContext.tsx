@@ -22,6 +22,7 @@ export interface User {
   status: UserStatus;
   phone: string;
   unitNo?: string;
+  plates?: string[];
   businessName?: string;
   businessCategory?: string;
   businessDescription?: string;
@@ -53,6 +54,7 @@ export interface RegisterData {
   siteName?: string;
   siteAddress?: string;
   unitNo?: string;
+  plates?: string[];
   businessName?: string;
   businessCategory?: string;
   businessDescription?: string;
@@ -179,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status: data.role === "security" ? "active" : "pending",
       phone: data.phone,
       unitNo: data.unitNo,
+      plates: data.plates,
       businessName: data.businessName,
       businessCategory: data.businessCategory,
       businessDescription: data.businessDescription,
