@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import * as Location from "expo-location";
 import React, { useEffect, useState } from "react";
+
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +18,20 @@ import { useAuth, UserRole } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+
+export const MERCHANT_SECTORS: { value: string; icon: keyof typeof Feather.glyphMap }[] = [
+  { value: "Market", icon: "shopping-bag" },
+  { value: "Restoran", icon: "coffee" },
+  { value: "Kafe", icon: "coffee" },
+  { value: "Berber / Kuaför", icon: "scissors" },
+  { value: "Eczane", icon: "activity" },
+  { value: "Fırın / Pastane", icon: "box" },
+  { value: "Çiçekçi", icon: "feather" },
+  { value: "Temizlik", icon: "wind" },
+  { value: "Elektrikçi", icon: "zap" },
+  { value: "Çilingir", icon: "key" },
+  { value: "Diğer", icon: "briefcase" },
+];
 
 type PrimaryRole = "resident" | "security";
 type AllRole = UserRole;
@@ -123,6 +138,8 @@ export default function RegisterScreen() {
     }
     if (isAdmin && !siteName.trim()) { setError("Site adı zorunludur."); return; }
     if (isResident && !unitNo.trim()) { setError("Daire numarası Sakin kayıtları için zorunludur."); return; }
+    if (isMerchant && !businessName.trim()) { setError("İşletme adı zorunludur."); return; }
+    if (isMerchant && !businessCategory.trim()) { setError("Lütfen bir sektör seçin."); return; }
 
     const plates: string[] = [];
     if (isResident) {
@@ -500,7 +517,33 @@ export default function RegisterScreen() {
 
                   <View style={styles.fields}>
                     <Input label="İşletme Adı *" placeholder="İşletmenizin adı" value={businessName} onChangeText={setBusinessName} leftIcon="briefcase" />
-                    <Input label="Kategori" placeholder="örn. Market, Restoran, Kafe..." value={businessCategory} onChangeText={setBusinessCategory} leftIcon="tag" />
+
+                    {/* Sector picker */}
+                    <View style={styles.sectorSection}>
+                      <Text style={[styles.sectorLabel, { color: colors.foreground }]}>
+                        Sektör <Text style={{ color: colors.destructive }}>*</Text>
+                      </Text>
+                      <View style={styles.sectorGrid}>
+                        {MERCHANT_SECTORS.map((s) => (
+                          <Pressable
+                            key={s.value}
+                            onPress={() => setBusinessCategory(s.value)}
+                            style={[
+                              styles.sectorBtn,
+                              {
+                                borderRadius: colors.radius - 2,
+                                borderColor: businessCategory === s.value ? colors.primary : colors.border,
+                                backgroundColor: businessCategory === s.value ? colors.primaryLight : colors.card,
+                              },
+                            ]}
+                          >
+                            <Feather name={s.icon} size={16} color={businessCategory === s.value ? colors.primary : colors.mutedForeground} />
+                            <Text style={[styles.sectorBtnText, { color: businessCategory === s.value ? colors.primary : colors.foreground }]}>{s.value}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+
                     <Input label="İşletme Adresi" placeholder="Mahalle, sokak, bina no..." value={businessAddress} onChangeText={setBusinessAddress} leftIcon="map-pin" />
                     <Input label="Açıklama" placeholder="Kısa işletme açıklaması" value={businessDescription} onChangeText={setBusinessDescription} leftIcon="file-text" />
 
@@ -655,6 +698,11 @@ const styles = StyleSheet.create({
   loginHighlight: { fontFamily: "Inter_600SemiBold" },
   merchantInfoBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12 },
   merchantInfoText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  sectorSection: { gap: 8 },
+  sectorLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  sectorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  sectorBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1.5 },
+  sectorBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   locationBox: { borderWidth: 1, padding: 14, gap: 10 },
   locationHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   locationTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },

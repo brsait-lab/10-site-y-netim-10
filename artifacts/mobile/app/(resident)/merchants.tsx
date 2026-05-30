@@ -15,18 +15,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth, User } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { MERCHANT_SECTORS } from "@/app/(auth)/register";
 
-const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
-  market: "shopping-bag",
-  restoran: "coffee",
-  kafe: "coffee",
-  berber: "scissors",
-  kuaför: "scissors",
-  eczane: "activity",
-  default: "briefcase",
-};
+const SECTOR_ICON_MAP: Record<string, keyof typeof Feather.glyphMap> = Object.fromEntries(
+  MERCHANT_SECTORS.map((s) => [s.value.toLowerCase(), s.icon])
+);
 
-const CATEGORIES = ["Tümü", "Market", "Restoran", "Kafe", "Berber", "Eczane", "Diğer"];
+const CATEGORIES = ["Tümü", ...MERCHANT_SECTORS.map((s) => s.value)];
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
@@ -56,10 +51,10 @@ function MerchantCard({
 }) {
   const colors = useColors();
   const catKey =
-    Object.keys(CATEGORY_ICONS).find((k) =>
+    Object.keys(SECTOR_ICON_MAP).find((k) =>
       (merchant.businessCategory || "").toLowerCase().includes(k)
-    ) || "default";
-  const icon = CATEGORY_ICONS[catKey];
+    );
+  const icon: keyof typeof Feather.glyphMap = catKey ? SECTOR_ICON_MAP[catKey] : "briefcase";
 
   return (
     <View
