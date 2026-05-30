@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useAuth, Site } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
@@ -51,16 +52,24 @@ export default function ResidentHome() {
       )}
 
       <View style={styles.statsRow}>
-        <View style={[styles.statCard, { backgroundColor: myUPs.length > 0 ? "#fef3c7" : colors.card, borderRadius: colors.radius, borderColor: myUPs.length > 0 ? "#fcd34d" : colors.border }]}>
+        <Pressable
+          onPress={() => router.push({ pathname: "/(resident)/payments", params: { tab: "aidat", status: "pending" } })}
+          style={[styles.statCard, { backgroundColor: myUPs.length > 0 ? "#fef3c7" : colors.card, borderRadius: colors.radius, borderColor: myUPs.length > 0 ? "#fcd34d" : colors.border }]}
+        >
           <Feather name="credit-card" size={20} color={myUPs.length > 0 ? "#92400e" : colors.primary} />
           <Text style={[styles.statValue, { color: myUPs.length > 0 ? "#92400e" : colors.foreground }]}>₺{pendingPaymentTotal.toLocaleString("tr-TR")}</Text>
           <Text style={[styles.statLabel, { color: myUPs.length > 0 ? "#a16207" : colors.mutedForeground }]}>Bekleyen Borç</Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
+          <Feather name="chevron-right" size={12} color={myUPs.length > 0 ? "#a16207" : colors.mutedForeground} />
+        </Pressable>
+        <Pressable
+          onPress={() => router.push({ pathname: "/(resident)/payments", params: { tab: "aidat", status: "paid" } })}
+          style={[styles.statCard, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}
+        >
           <Feather name="check-circle" size={20} color={colors.primary} />
           <Text style={[styles.statValue, { color: colors.foreground }]}>{paidCount}</Text>
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Ödenen</Text>
-        </View>
+          <Feather name="chevron-right" size={12} color={colors.mutedForeground} />
+        </Pressable>
         <View style={[styles.statCard, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
           <Feather name="bell" size={20} color={colors.primary} />
           <Text style={[styles.statValue, { color: colors.foreground }]}>{myNotifs.length}</Text>

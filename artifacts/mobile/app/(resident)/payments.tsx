@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { useData, Payment, UserPayment } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
@@ -111,9 +112,15 @@ export default function ResidentPaymentsScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { payments, userPayments, payDue, refresh } = useData();
+  const params = useLocalSearchParams<{ tab?: string; status?: string }>();
   const [tabFilter, setTabFilter] = useState<FilterTab>("aidat");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (params.tab === "aidat" || params.tab === "gider") setTabFilter(params.tab);
+    if (params.status === "pending" || params.status === "paid" || params.status === "all") setStatusFilter(params.status);
+  }, [params.tab, params.status]);
 
   const onRefresh = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
