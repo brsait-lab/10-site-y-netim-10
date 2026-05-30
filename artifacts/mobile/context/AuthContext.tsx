@@ -26,6 +26,9 @@ export interface User {
   businessName?: string;
   businessCategory?: string;
   businessDescription?: string;
+  businessAddress?: string;
+  latitude?: number;
+  longitude?: number;
   createdAt: string;
 }
 
@@ -41,6 +44,7 @@ interface AuthContextType {
   approveUser: (userId: string) => Promise<void>;
   rejectUser: (userId: string) => Promise<void>;
   getSiteUsers: (siteId: string) => Promise<User[]>;
+  getAllMerchants: () => Promise<User[]>;
   refreshSites: () => Promise<void>;
 }
 
@@ -58,6 +62,9 @@ export interface RegisterData {
   businessName?: string;
   businessCategory?: string;
   businessDescription?: string;
+  businessAddress?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 const STORAGE_KEYS = {
@@ -169,7 +176,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true, message: "Hesap oluşturuldu." };
     }
 
-    if (!siteId) return { success: false, message: "Lütfen bir site seçin." };
+    // Merchants don't need a site — they register globally and are found by location
+    if (data.role !== "merchant" && !siteId) {
+      return { success: false, message: "Lütfen bir site seçin." };
+    }
 
     const newUser: User = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -177,14 +187,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: data.email,
       password: data.password,
       role: data.role,
-      siteId,
-      status: data.role === "security" ? "active" : "pending",
+      siteId: siteId || "global",
+      status: data.role === "security" ? "active" : data.role === "merchant" ? "active" : "pending",
       phone: data.phone,
       unitNo: data.unitNo,
       plates: data.plates,
       businessName: data.businessName,
       businessCategory: data.businessCategory,
       businessDescription: data.businessDescription,
+      businessAddress: data.businessAddress,
+      latitude: data.latitude,
+      longitude: data.longitude,
       createdAt: new Date().toISOString(),
     };
 
@@ -243,6 +256,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return users.filter((u) => u.siteId === siteId);
   };
 
+  const getAllMerchants = async () => {
+    const users = await getUsers();
+    return users.filter((u) => u.role === "merchant");
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -257,6 +275,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         approveUser,
         rejectUser,
         getSiteUsers,
+        getAllMerchants,
         refreshSites,
       }}
     >

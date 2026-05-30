@@ -144,13 +144,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   ).length;
 
   const sendNotification = async (data: Omit<AppNotification, "id" | "createdAt" | "readBy">) => {
+    const stored = await AsyncStorage.getItem(KEYS.NOTIFICATIONS);
+    const current: AppNotification[] = stored ? JSON.parse(stored) : [];
     const newN: AppNotification = {
       ...data,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       createdAt: new Date().toISOString(),
       readBy: [],
     };
-    const updated = [...notifications, newN];
+    const updated = [...current, newN];
     setNotifications(updated);
     await AsyncStorage.setItem(KEYS.NOTIFICATIONS, JSON.stringify(updated));
   };

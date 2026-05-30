@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,15 +18,30 @@ import { LogoBadge } from "@/components/TreeLogo";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
+const ROLE_OPTIONS: {
+  key: UserRole;
+  label: string;
+  sub: string;
+  icon: keyof typeof Feather.glyphMap;
+}[] = [
+  { key: "resident", label: "Sakin", sub: "Daire sahibi veya kiracı", icon: "home" },
+  { key: "security", label: "Güvenlik Görevlisi", sub: "Güvenlik / personel", icon: "shield" },
+  { key: "merchant", label: "Esnaf", sub: "İşletme sahibi", icon: "shopping-bag" },
+  { key: "admin", label: "Yönetici", sub: "Site yöneticisi", icon: "settings" },
+];
+
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const [role, setRole] = useState<UserRole>("resident");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const selectedRole = ROLE_OPTIONS.find((r) => r.key === role)!;
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -54,7 +70,7 @@ export default function LoginScreen() {
     <View style={[styles.root, { backgroundColor: colors.primary }]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingTop: topPad + 24, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 24 }]}
+          contentContainerStyle={[styles.scroll, { paddingTop: topPad + 24, paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 0) + 32 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -70,93 +86,34 @@ export default function LoginScreen() {
           {/* ── CARD ── */}
           <View style={[styles.card, { backgroundColor: colors.background, borderRadius: 28, shadowColor: "#000" }]}>
             <Text style={[styles.cardTitle, { color: colors.foreground }]}>Hesabınıza Giriş Yapın</Text>
-            <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Rolünüzü seçerek devam edin</Text>
 
-            {/* ── PRIMARY SEGMENT: Sakin / Güvenlik ── */}
-            <View style={[styles.segmentWrapper, { backgroundColor: colors.muted, borderRadius: 14 }]}>
-              {(["resident", "security"] as UserRole[]).map((r, i) => {
-                const active = role === r;
-                const label = r === "resident" ? "Sakin" : "Güvenlik";
-                const icon: keyof typeof Feather.glyphMap = r === "resident" ? "home" : "shield";
-                return (
-                  <Pressable
-                    key={r}
-                    onPress={() => { setRole(r); setError(""); }}
-                    style={[
-                      styles.segment,
-                      {
-                        borderRadius: 11,
-                        backgroundColor: active ? colors.card : "transparent",
-                        shadowColor: active ? "#000" : "transparent",
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: active ? 0.08 : 0,
-                        shadowRadius: 6,
-                        elevation: active ? 3 : 0,
-                        borderWidth: active ? 1 : 0,
-                        borderColor: active ? colors.border : "transparent",
-                      },
-                    ]}
-                  >
-                    <View style={[styles.segmentIconWrap, { backgroundColor: active ? colors.primaryLight : "transparent", borderRadius: 10 }]}>
-                      <Feather name={icon} size={18} color={active ? colors.primary : colors.mutedForeground} />
-                    </View>
-                    <Text style={[styles.segmentLabel, { color: active ? colors.primary : colors.mutedForeground }]}>
-                      {label}
-                    </Text>
-                    {active && (
-                      <View style={[styles.activeDot, { backgroundColor: colors.primary }]} />
-                    )}
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {/* ── SECONDARY CHIPS: Esnaf / Yönetici ── */}
-            <View style={styles.chipRow}>
-              {(["merchant", "admin"] as UserRole[]).map((r) => {
-                const active = role === r;
-                const label = r === "merchant" ? "Esnaf" : "Yönetici";
-                const icon: keyof typeof Feather.glyphMap = r === "merchant" ? "shopping-bag" : "settings";
-                return (
-                  <Pressable
-                    key={r}
-                    onPress={() => { setRole(r); setError(""); }}
-                    style={[
-                      styles.chip,
-                      {
-                        borderRadius: 22,
-                        backgroundColor: active ? colors.primaryLight : colors.muted,
-                        borderColor: active ? colors.primary : "transparent",
-                        borderWidth: active ? 1.5 : 0,
-                      },
-                    ]}
-                  >
-                    <Feather name={icon} size={14} color={active ? colors.primary : colors.mutedForeground} />
-                    <Text style={[styles.chipLabel, { color: active ? colors.primary : colors.mutedForeground }]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              <View style={[styles.chipDivider, { backgroundColor: colors.border }]} />
-              <Text style={[styles.chipHint, { color: colors.mutedForeground }]}>İş hesabı</Text>
-            </View>
-
-            {/* ── ROLE INDICATOR ── */}
-            <View style={[styles.roleIndicator, { backgroundColor: colors.primaryLight, borderRadius: 10, borderColor: colors.primary + "30" }]}>
-              <Feather
-                name={role === "resident" ? "home" : role === "security" ? "shield" : role === "merchant" ? "shopping-bag" : "settings"}
-                size={13}
-                color={colors.primary}
-              />
-              <Text style={[styles.roleIndicatorText, { color: colors.primary }]}>
-                {{
-                  resident: "Sakin olarak giriş yapıyorsunuz",
-                  security: "Güvenlik görevlisi olarak giriş yapıyorsunuz",
-                  merchant: "Esnaf olarak giriş yapıyorsunuz",
-                  admin: "Yönetici olarak giriş yapıyorsunuz",
-                }[role]}
-              </Text>
+            {/* ── ROLE PICKER BUTTON ── */}
+            <View>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Kullanıcı Tipi</Text>
+              <Pressable
+                onPress={() => setPickerOpen(true)}
+                style={[
+                  styles.rolePickerBtn,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.primary,
+                    borderRadius: colors.radius,
+                    borderWidth: 2,
+                  },
+                ]}
+              >
+                <View style={[styles.rolePickerIcon, { backgroundColor: colors.primaryLight, borderRadius: 10 }]}>
+                  <Feather name={selectedRole.icon} size={20} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.rolePickerLabel, { color: colors.foreground }]}>{selectedRole.label}</Text>
+                  <Text style={[styles.rolePickerSub, { color: colors.mutedForeground }]}>{selectedRole.sub}</Text>
+                </View>
+                <View style={[styles.changeChip, { backgroundColor: colors.primaryLight, borderRadius: 12 }]}>
+                  <Feather name="chevron-down" size={14} color={colors.primary} />
+                  <Text style={[styles.changeText, { color: colors.primary }]}>Değiştir</Text>
+                </View>
+              </Pressable>
             </View>
 
             {/* ── FIELDS ── */}
@@ -180,7 +137,6 @@ export default function LoginScreen() {
               />
             </View>
 
-            {/* ── ERROR ── */}
             {error ? (
               <View style={[styles.errorBox, { backgroundColor: "#fef2f2", borderRadius: 10, borderColor: "#fca5a5" }]}>
                 <Feather name="alert-circle" size={15} color={colors.destructive} />
@@ -188,10 +144,8 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
-            {/* ── SUBMIT ── */}
             <Button title="Giriş Yap" onPress={handleLogin} loading={loading} fullWidth size="lg" />
 
-            {/* ── REGISTER ── */}
             <Pressable onPress={() => router.push("/(auth)/register")} style={styles.registerRow}>
               <Text style={[styles.registerText, { color: colors.mutedForeground }]}>Hesabınız yok mu?</Text>
               <View style={[styles.registerBtn, { backgroundColor: colors.primaryLight, borderRadius: 20 }]}>
@@ -201,7 +155,6 @@ export default function LoginScreen() {
             </Pressable>
           </View>
 
-          {/* ── FOOTER ── */}
           <View style={styles.footer}>
             <View style={[styles.footerBadge, { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 20 }]}>
               <Feather name="shield" size={12} color="rgba(255,255,255,0.8)" />
@@ -210,6 +163,56 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ── ROLE PICKER MODAL ── */}
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setPickerOpen(false)}>
+          <Pressable
+            style={[styles.modalSheet, { backgroundColor: colors.background, borderRadius: 24, shadowColor: "#000" }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHandle} />
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Kullanıcı Tipi Seçin</Text>
+            <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>Sisteme hangi rolde giriş yapıyorsunuz?</Text>
+
+            <View style={styles.modalOptions}>
+              {ROLE_OPTIONS.map((r) => {
+                const active = role === r.key;
+                return (
+                  <Pressable
+                    key={r.key}
+                    onPress={() => { setRole(r.key); setError(""); setPickerOpen(false); }}
+                    style={[
+                      styles.modalOption,
+                      {
+                        backgroundColor: active ? colors.primaryLight : colors.card,
+                        borderColor: active ? colors.primary : colors.border,
+                        borderRadius: colors.radius,
+                        borderWidth: active ? 2 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.modalOptionIcon, { backgroundColor: active ? colors.primary : colors.muted, borderRadius: 12 }]}>
+                      <Feather name={r.icon} size={22} color={active ? "#fff" : colors.mutedForeground} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.modalOptionLabel, { color: active ? colors.primary : colors.foreground }]}>
+                        {r.label}
+                      </Text>
+                      <Text style={[styles.modalOptionSub, { color: colors.mutedForeground }]}>{r.sub}</Text>
+                    </View>
+                    {active && (
+                      <View style={[styles.checkCircle, { backgroundColor: colors.primary, borderRadius: 12 }]}>
+                        <Feather name="check" size={14} color="#fff" />
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -217,58 +220,47 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: 20, gap: 24 },
-
-  /* hero */
   hero: { alignItems: "center", gap: 10, paddingBottom: 4 },
   logoBg: { padding: 18, marginBottom: 2 },
   appName: { fontSize: 30, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: -0.5 },
   tagline: { fontSize: 14, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.75)" },
-
-  /* card */
   card: {
-    padding: 24,
-    gap: 18,
+    padding: 24, gap: 18,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 8,
+    shadowOpacity: 0.12, shadowRadius: 24, elevation: 8,
   },
   cardTitle: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  cardSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: -10 },
-
-  /* segmented control */
-  segmentWrapper: { flexDirection: "row", padding: 4, gap: 4, height: 76 },
-  segment: { flex: 1, alignItems: "center", justifyContent: "center", gap: 6, position: "relative", margin: 0 },
-  segmentIconWrap: { padding: 8 },
-  segmentLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  activeDot: { position: "absolute", bottom: 8, width: 4, height: 4, borderRadius: 2 },
-
-  /* chips */
-  chipRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: -4 },
-  chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8 },
-  chipLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  chipDivider: { width: 1, height: 20, marginHorizontal: 4 },
-  chipHint: { fontSize: 12, fontFamily: "Inter_400Regular" },
-
-  /* indicator */
-  roleIndicator: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1 },
-  roleIndicatorText: { fontSize: 12, fontFamily: "Inter_500Medium" },
-
-  /* fields */
+  fieldLabel: { fontSize: 12, fontFamily: "Inter_500Medium", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
+  rolePickerBtn: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  rolePickerIcon: { padding: 10 },
+  rolePickerLabel: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  rolePickerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  changeChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6 },
+  changeText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   fields: { gap: 14 },
-
-  /* error */
   errorBox: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12, borderWidth: 1 },
   errorText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
-
-  /* register */
   registerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   registerText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   registerBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 7 },
   registerBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
-
-  /* footer */
-  footer: { alignItems: "center", paddingBottom: 8 },
+  footer: { alignItems: "center" },
   footerBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 7 },
   footerText: { fontSize: 12, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.8)" },
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  modalSheet: {
+    margin: 12, padding: 24, gap: 16,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15, shadowRadius: 20, elevation: 12,
+  },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#d1d5db", alignSelf: "center", marginBottom: 4 },
+  modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  modalSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: -8 },
+  modalOptions: { gap: 10 },
+  modalOption: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16 },
+  modalOptionIcon: { padding: 10 },
+  modalOptionLabel: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  modalOptionSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  checkCircle: { width: 26, height: 26, alignItems: "center", justifyContent: "center" },
 });

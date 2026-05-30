@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import * as Location from "expo-location";
 import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -56,6 +57,11 @@ export default function RegisterScreen() {
   const [businessName, setBusinessName] = useState("");
   const [businessCategory, setBusinessCategory] = useState("");
   const [businessDescription, setBusinessDescription] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
+  const [merchantLat, setMerchantLat] = useState<number | undefined>(undefined);
+  const [merchantLon, setMerchantLon] = useState<number | undefined>(undefined);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationMsg, setLocationMsg] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -69,7 +75,24 @@ export default function RegisterScreen() {
   const isResident = role === "resident";
   const isSecurity = role === "security";
   const isMerchant = role === "merchant";
-  const needsSite = !isAdmin;
+  const needsSite = !isAdmin && !isMerchant;
+
+  const handleGetLocation = async () => {
+    if (Platform.OS === "web") { setLocationMsg("Konum web'de desteklenmez, adres girerek devam edin."); return; }
+    setLocationLoading(true);
+    setLocationMsg("");
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") { setLocationMsg("Konum izni reddedildi."); setLocationLoading(false); return; }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setMerchantLat(loc.coords.latitude);
+      setMerchantLon(loc.coords.longitude);
+      setLocationMsg("Konumunuz alındı! Sakinler sizi haritada bulabilecek.");
+    } catch {
+      setLocationMsg("Konum alınamadı. Adres girerek devam edebilirsiniz.");
+    }
+    setLocationLoading(false);
+  };
 
   const filteredSites = sites.filter((s) => {
     const q = siteSearch.toLowerCase();
@@ -108,7 +131,7 @@ export default function RegisterScreen() {
     }
 
     setLoading(true);
-    await refreshSites();
+    if (!isMerchant) await refreshSites();
     const result = await register({
       name: name.trim(),
       email: email.trim(),
@@ -123,6 +146,9 @@ export default function RegisterScreen() {
       businessName: isMerchant ? businessName.trim() : undefined,
       businessCategory: isMerchant ? businessCategory.trim() : undefined,
       businessDescription: isMerchant ? businessDescription.trim() : undefined,
+      businessAddress: isMerchant ? businessAddress.trim() : undefined,
+      latitude: isMerchant ? merchantLat : undefined,
+      longitude: isMerchant ? merchantLon : undefined,
     });
     setLoading(false);
 
@@ -455,25 +481,77 @@ export default function RegisterScreen() {
                 </View>
               )}
 
-              {/* STEP 4: MERCHANT INFO */}
+              {/* STEP 3: MERCHANT INFO + LOCATION (no site needed) */}
               {isMerchant && (
                 <View style={styles.section}>
                   <View style={styles.stepHeader}>
                     <View style={[styles.stepBadge, { backgroundColor: colors.primary }]}>
-                      <Text style={styles.stepNum}>4</Text>
+                      <Text style={styles.stepNum}>3</Text>
                     </View>
                     <Text style={[styles.stepTitle, { color: colors.foreground }]}>İşletme Bilgileri</Text>
                   </View>
+
+                  <View style={[styles.merchantInfoBanner, { backgroundColor: colors.primaryLight, borderRadius: colors.radius }]}>
+                    <Feather name="info" size={14} color={colors.primary} />
+                    <Text style={[styles.merchantInfoText, { color: colors.primary }]}>
+                      Esnaflar siteye bağlı değildir. Kaydınız onaylanır ve sakinler sizi konum bazlı bulabilir.
+                    </Text>
+                  </View>
+
                   <View style={styles.fields}>
-                    <Input label="İşletme Adı" placeholder="İşletmenizin adı" value={businessName} onChangeText={setBusinessName} leftIcon="briefcase" />
-                    <Input label="Kategori" placeholder="örn. Market, Restoran..." value={businessCategory} onChangeText={setBusinessCategory} leftIcon="tag" />
+                    <Input label="İşletme Adı *" placeholder="İşletmenizin adı" value={businessName} onChangeText={setBusinessName} leftIcon="briefcase" />
+                    <Input label="Kategori" placeholder="örn. Market, Restoran, Kafe..." value={businessCategory} onChangeText={setBusinessCategory} leftIcon="tag" />
+                    <Input label="İşletme Adresi" placeholder="Mahalle, sokak, bina no..." value={businessAddress} onChangeText={setBusinessAddress} leftIcon="map-pin" />
                     <Input label="Açıklama" placeholder="Kısa işletme açıklaması" value={businessDescription} onChangeText={setBusinessDescription} leftIcon="file-text" />
+
+                    {/* Location getter */}
+                    <View style={[styles.locationBox, { borderColor: colors.border, borderRadius: colors.radius, backgroundColor: colors.card }]}>
+                      <View style={styles.locationHeader}>
+                        <Feather name="navigation" size={14} color={colors.mutedForeground} />
+                        <Text style={[styles.locationTitle, { color: colors.foreground }]}>Konum (GPS)</Text>
+                        <View style={[styles.optionalBadge, { backgroundColor: colors.muted, borderRadius: 8 }]}>
+                          <Text style={[styles.optionalText, { color: colors.mutedForeground }]}>İsteğe bağlı</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.locationDesc, { color: colors.mutedForeground }]}>
+                        GPS konumunuzu paylaşırsanız sakinler size olan mesafeyi görebilir.
+                      </Text>
+                      <Pressable
+                        onPress={handleGetLocation}
+                        style={[
+                          styles.locationBtn,
+                          {
+                            backgroundColor: merchantLat ? colors.primaryLight : colors.muted,
+                            borderRadius: colors.radius - 2,
+                          },
+                        ]}
+                      >
+                        {locationLoading ? (
+                          <Text style={[styles.locationBtnText, { color: colors.mutedForeground }]}>Konum alınıyor...</Text>
+                        ) : merchantLat ? (
+                          <>
+                            <Feather name="check-circle" size={15} color={colors.primary} />
+                            <Text style={[styles.locationBtnText, { color: colors.primary }]}>Konum Alındı ✓</Text>
+                          </>
+                        ) : (
+                          <>
+                            <Feather name="map-pin" size={15} color={colors.mutedForeground} />
+                            <Text style={[styles.locationBtnText, { color: colors.mutedForeground }]}>GPS Konumumu Paylaş</Text>
+                          </>
+                        )}
+                      </Pressable>
+                      {locationMsg ? (
+                        <Text style={[styles.locationMsg, { color: merchantLat ? colors.primary : "#92400e" }]}>
+                          {locationMsg}
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 </View>
               )}
 
               {/* APPROVAL INFO BANNER */}
-              {(isResident || isMerchant) && (
+              {isResident && (
                 <View style={[styles.approvalBanner, { backgroundColor: "#dbeafe", borderRadius: colors.radius }]}>
                   <Feather name="clock" size={16} color="#1d4ed8" />
                   <Text style={[styles.approvalText, { color: "#1e40af" }]}>
@@ -575,4 +653,13 @@ const styles = StyleSheet.create({
   loginLink: { alignItems: "center", paddingVertical: 4 },
   loginText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   loginHighlight: { fontFamily: "Inter_600SemiBold" },
+  merchantInfoBanner: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12 },
+  merchantInfoText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  locationBox: { borderWidth: 1, padding: 14, gap: 10 },
+  locationHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  locationTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  locationDesc: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  locationBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12 },
+  locationBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  locationMsg: { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" },
 });
