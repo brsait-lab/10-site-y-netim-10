@@ -144,6 +144,29 @@ export interface UserPaymentDto {
   paidAt?: string;
 }
 
+export interface ChatDto {
+  id: string;
+  siteId: string;
+  title: string;
+  status: string;
+  createdBy: string;
+  closedBy?: string;
+  closedAt?: string;
+  createdAt: string;
+}
+
+export interface CreateChatRequest {
+  title: string;
+  participantIds?: string[];
+}
+
+export interface ChatParticipantDto {
+  id: string;
+  chatId: string;
+  userId: string;
+  joinedAt: string;
+}
+
 export interface MessageDto {
   id: string;
   chatId: string;
@@ -180,6 +203,71 @@ export interface AddPackageRequest {
 }
 
 export interface UpdatePackageStatusRequest {
+  status: string;
+}
+
+export interface VendorCategoryDto {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface VendorDto {
+  id: string;
+  userId: string;
+  name: string;
+  category: string;
+  description: string;
+  phone: string;
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface CreateVendorRequest {
+  name: string;
+  category: string;
+  description?: string;
+  phone?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface UpdateVendorRequest {
+  name?: string;
+  category?: string;
+  description?: string;
+  phone?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  status?: string;
+}
+
+export interface VendorRequestDto {
+  id: string;
+  siteId: string;
+  requestedBy: string;
+  vendorId?: string;
+  title: string;
+  description: string;
+  status: string;
+  assignedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface CreateVendorRequestInput {
+  vendorId?: string;
+  title: string;
+  description: string;
+}
+
+export interface UpdateVendorRequestStatusInput {
   status: string;
 }
 

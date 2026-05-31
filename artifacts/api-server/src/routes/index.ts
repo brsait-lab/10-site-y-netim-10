@@ -7,6 +7,8 @@ import notificationsRouter from "./notifications.js";
 import paymentsRouter from "./payments.js";
 import messagesRouter from "./messages.js";
 import packagesRouter from "./packages.js";
+import chatsRouter from "./chats.js";
+import vendorsRouter from "./vendors.js";
 
 const router: IRouter = Router();
 
@@ -18,5 +20,7 @@ router.use(notificationsRouter);
 router.use(paymentsRouter);
 router.use(messagesRouter);
 router.use(packagesRouter);
+router.use(chatsRouter);
+router.use(vendorsRouter);
 
 export default router;

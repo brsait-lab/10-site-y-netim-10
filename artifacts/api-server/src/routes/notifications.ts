@@ -17,22 +17,44 @@ function toDto(n: Awaited<ReturnType<typeof prisma.notification.findFirst>>) {
 
 router.get("/notifications", requireAuth, async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
-  const rows = await prisma.notification.findMany({ where: { siteId } });
+  const rows = await prisma.notification.findMany({ where: { siteId }, orderBy: { createdAt: "desc" } });
   res.json(rows.map((n) => toDto(n)));
 });
 
 router.post("/notifications", requireAuth, async (req: Request, res: Response) => {
+  const { userId, role, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
     type: string; title: string; message: string;
     fromUserId: string; fromName: string;
     toRoles?: string[]; toUserIds?: string[]; siteId: string;
   };
+
+  if (role === "resident" && body.type === "noise") {
+    const targetUserId = body.toUserIds?.[0];
+    if (targetUserId) {
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const count = await prisma.notification.count({
+        where: {
+          fromUserId: userId,
+          type: "noise",
+          toUserIds: { has: targetUserId },
+          createdAt: { gte: dayStart },
+        },
+      });
+      if (count >= 1) {
+        res.status(429).json({ message: "Aynı kişiye bugün zaten gürültü bildirimi gönderdiniz." });
+        return;
+      }
+    }
+  }
+
   const row = await prisma.notification.create({
     data: {
       type: body.type, title: body.title, message: body.message,
       fromUserId: body.fromUserId, fromName: body.fromName,
       toRoles: body.toRoles ?? [], toUserIds: body.toUserIds ?? [],
-      siteId: body.siteId, readBy: [],
+      siteId: body.siteId || tokenSiteId, readBy: [],
     },
   });
   res.status(201).json(toDto(row));
@@ -49,6 +71,13 @@ router.patch("/notifications/:id/read", requireAuth, async (req: Request, res: R
   if (!readBy.includes(userId)) {
     await prisma.notification.update({ where: { id }, data: { readBy: [...readBy, userId] } });
   }
+
+  await prisma.notificationRead.upsert({
+    where: { notificationId_userId: { notificationId: id, userId } },
+    create: { notificationId: id, userId },
+    update: {},
+  });
+
   res.status(204).end();
 });
 

@@ -8,14 +8,43 @@ function maskSensitiveInfo(text: string): string {
   return text
     .replace(/(\+?90|0)?\s*5\d{2}\s*\d{3}\s*\d{2}\s*\d{2}/g, "***TELEFON***")
     .replace(/\b\d{10,11}\b/g, "***GİZLİ***")
-    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "***E-POSTA***");
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "***E-POSTA***")
+    .replace(/\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}([A-Z0-9]?){0,16}\b/g, "***IBAN***")
+    .replace(/\bTR\d{2}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{2}\b/gi, "***IBAN***");
 }
 
 router.get("/messages", requireAuth, async (req: Request, res: Response) => {
+  const { userId } = (req as AuthRequest).authUser;
   const chatId = req.query["chatId"] as string | undefined;
-  const rows = chatId
-    ? await prisma.message.findMany({ where: { chatId } })
-    : await prisma.message.findMany();
+
+  if (chatId) {
+    const isParticipant = await prisma.chatParticipant.findUnique({
+      where: { chatId_userId: { chatId, userId } },
+    });
+    if (!isParticipant) {
+      res.status(403).json({ message: "Bu sohbete erişim yetkiniz yok." });
+      return;
+    }
+    const rows = await prisma.message.findMany({
+      where: { chatId },
+      orderBy: { createdAt: "asc" },
+    });
+    return res.json(rows.map((m) => ({
+      id: m.id, chatId: m.chatId, fromId: m.fromId,
+      fromName: m.fromName, content: m.content,
+      createdAt: m.createdAt.toISOString(),
+    })));
+  }
+
+  const participations = await prisma.chatParticipant.findMany({
+    where: { userId },
+    select: { chatId: true },
+  });
+  const chatIds = participations.map((p) => p.chatId);
+  const rows = await prisma.message.findMany({
+    where: { chatId: { in: chatIds } },
+    orderBy: { createdAt: "asc" },
+  });
   res.json(rows.map((m) => ({
     id: m.id, chatId: m.chatId, fromId: m.fromId,
     fromName: m.fromName, content: m.content,
@@ -26,6 +55,15 @@ router.get("/messages", requireAuth, async (req: Request, res: Response) => {
 router.post("/messages", requireAuth, async (req: Request, res: Response) => {
   const { userId, email } = (req as AuthRequest).authUser;
   const body = req.body as { chatId: string; content: string };
+
+  const chat = await prisma.chat.findUnique({ where: { id: body.chatId } });
+  if (!chat) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
+  if (chat.status === "closed") { res.status(400).json({ message: "Kapalı bir sohbete mesaj gönderilemez." }); return; }
+
+  const isParticipant = await prisma.chatParticipant.findUnique({
+    where: { chatId_userId: { chatId: body.chatId, userId } },
+  });
+  if (!isParticipant) { res.status(403).json({ message: "Bu sohbete erişim yetkiniz yok." }); return; }
 
   const sender = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
 

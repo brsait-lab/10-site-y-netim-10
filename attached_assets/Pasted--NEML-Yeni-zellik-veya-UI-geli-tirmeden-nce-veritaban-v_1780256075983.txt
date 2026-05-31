@@ -1,0 +1,131 @@
+ÖNEMLİ: Yeni özellik veya UI geliştirmeden önce veritabanı ve backend mimarisini stabilize et.
+
+Mevcut uygulama çoklu site (multi-tenant) SaaS mantığında çalışacaktır. Bundan sonraki tüm geliştirmeler bu mimariye uygun olmalıdır.
+
+ÖNCELİK SIRASI:
+
+1. Veritabanını analiz et.
+2. Mevcut tabloları incele.
+3. Eksik ilişkileri belirle.
+4. Gerekli migration'ları oluştur.
+5. Uygulamayı çalışır durumda bırak.
+
+KURALLAR
+
+MULTI-TENANT
+
+* Her site bağımsız tenant'tır.
+* Her kullanıcı bir siteye bağlıdır.
+* Kullanıcılar yalnızca kendi sitelerindeki verilere erişebilir.
+* Tüm tenant verilerinde site_id zorunlu olsun.
+* Site verileri birbirine karışmasın.
+
+ROLLER
+
+* Admin (Yönetici)
+* Resident (Sakin)
+* Security (Güvenlik)
+* Vendor (Esnaf)
+
+SOHBET SİSTEMİ
+
+Yeni sohbet mimarisi oluştur:
+
+chats
+chat_participants
+messages
+
+Kurallar:
+
+* Sohbet Aç butonu yeni sohbet oluşturur.
+* Sohbet Kapat butonu sohbeti kapatır.
+* Kapatılan sohbet tekrar açılamaz.
+* Yeni ihtiyaç için yeni sohbet açılır.
+* Uygulamadan çıkmak sohbet durumunu değiştirmez.
+* Mesajlar korunur.
+
+SOFT DELETE
+
+Sohbetler fiziksel olarak silinmesin.
+
+Kullanıcı kendi ekranından silebilsin.
+
+Soft delete alanları ekle.
+
+Silinen sohbet sadece ilgili kullanıcının ekranından kaybolsun.
+
+BİLDİRİM SİSTEMİ
+
+notification_targets
+notification_reads
+
+tablolarını ekle.
+
+Yönetici:
+
+* Tek kullanıcı seçebilsin.
+* Çoklu kullanıcı seçebilsin.
+* Site geneline gönderebilsin.
+
+Güvenlik:
+
+* Kendi sitesi içindeki sakinlere bildirim gönderebilsin.
+
+Sakin:
+
+* Gürültü bildirimi gönderebilsin.
+* Aynı kullanıcıya günde 1 kez gönderim limiti olsun.
+
+KARGO SİSTEMİ
+
+Sakin güvenliğe serbest metin ile kargo bildirimi gönderebilsin.
+
+Örnek:
+
+"Kargom yarın saat 14:00 civarında gelecek."
+
+Güvenlik sakinlere teslim bildirimi gönderebilsin.
+
+ESNAF SİSTEMİ
+
+vendors
+vendor_categories
+vendor_requests
+
+tablolarını oluştur.
+
+Kurallar:
+
+* Esnaflar global çalışır.
+* Esnaflar siteye bağlı değildir.
+* Esnaflar birbirini göremez.
+* Yönetici, Güvenlik ve Sakin esnaf çağırabilir.
+* Esnaf sadece kendisine atanmış işleri görebilir.
+
+KULLANICI LİSTESİ
+
+Sakinler aynı site içerisindeki kullanıcı listesini görebilsin.
+
+Ancak:
+
+* Telefon
+* E-posta
+* TC Kimlik
+* Hassas bilgiler
+
+gösterilmesin.
+
+KVKK
+
+Mesajlarda telefon, TC ve IBAN tespiti için maskeleme altyapısı hazırla.
+
+Bu aşamada yeni ekran tasarlama.
+
+Önce veritabanı şeması, ilişkiler, migration ve backend servisleri tamamlanmalı.
+
+İş bitince:
+
+1. Oluşturulan tabloları listele.
+2. Yapılan migration'ları listele.
+3. Yeni API endpointlerini listele.
+4. Eksik kalan noktaları raporla.

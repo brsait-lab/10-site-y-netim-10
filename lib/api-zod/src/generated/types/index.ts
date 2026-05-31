@@ -8,7 +8,12 @@
 
 export * from './addPackageRequest';
 export * from './authResponse';
+export * from './chatDto';
+export * from './chatParticipantDto';
+export * from './createChatRequest';
 export * from './createPaymentRequest';
+export * from './createVendorRequest';
+export * from './createVendorRequestInput';
 export * from './errorResponse';
 export * from './getMessagesParams';
 export * from './getUsersParams';
@@ -25,5 +30,10 @@ export * from './sendNotificationRequest';
 export * from './siteDto';
 export * from './updatePackageStatusRequest';
 export * from './updateUserRequest';
+export * from './updateVendorRequest';
+export * from './updateVendorRequestStatusInput';
 export * from './userDto';
 export * from './userPaymentDto';
+export * from './vendorCategoryDto';
+export * from './vendorDto';
+export * from './vendorRequestDto';

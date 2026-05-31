@@ -21,8 +21,12 @@ tags:
     description: Payments
   - name: messages
     description: Messaging
+  - name: chats
+    description: Chat management
   - name: packages
     description: Package tracking
+  - name: vendors
+    description: Vendor management
 paths:
   /healthz:
     get:
@@ -330,6 +334,103 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserPaymentDto"
 
+  /chats:
+    get:
+      operationId: getChats
+      tags: [chats]
+      summary: Get chats for the current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of chats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatDto"
+    post:
+      operationId: createChat
+      tags: [chats]
+      summary: Create a new chat
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChatRequest"
+      responses:
+        "201":
+          description: Created chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatDto"
+
+  /chats/{id}/close:
+    patch:
+      operationId: closeChat
+      tags: [chats]
+      summary: Close a chat
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Closed chat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatDto"
+
+  /chats/{id}:
+    delete:
+      operationId: deleteChat
+      tags: [chats]
+      summary: Soft-delete a chat for the current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /chats/{id}/participants:
+    get:
+      operationId: getChatParticipants
+      tags: [chats]
+      summary: Get participants of a chat
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of participants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatParticipantDto"
+
   /messages:
     get:
       operationId: getMessages
@@ -433,6 +534,147 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PackageDto"
+
+  /vendor-categories:
+    get:
+      operationId: getVendorCategories
+      tags: [vendors]
+      summary: Get all vendor categories
+      responses:
+        "200":
+          description: List of vendor categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VendorCategoryDto"
+
+  /vendors:
+    get:
+      operationId: getVendors
+      tags: [vendors]
+      summary: Get vendors
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of vendors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VendorDto"
+    post:
+      operationId: createVendor
+      tags: [vendors]
+      summary: Create a vendor profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorRequest"
+      responses:
+        "201":
+          description: Created vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorDto"
+
+  /vendors/{id}:
+    patch:
+      operationId: updateVendor
+      tags: [vendors]
+      summary: Update a vendor profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVendorRequest"
+      responses:
+        "200":
+          description: Updated vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorDto"
+
+  /vendor-requests:
+    get:
+      operationId: getVendorRequests
+      tags: [vendors]
+      summary: Get vendor requests
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of vendor requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VendorRequestDto"
+    post:
+      operationId: createVendorRequest
+      tags: [vendors]
+      summary: Create a vendor request
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorRequestInput"
+      responses:
+        "201":
+          description: Created vendor request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorRequestDto"
+
+  /vendor-requests/{id}/status:
+    patch:
+      operationId: updateVendorRequestStatus
+      tags: [vendors]
+      summary: Update vendor request status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVendorRequestStatusInput"
+      responses:
+        "200":
+          description: Updated vendor request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorRequestDto"
 
 components:
   securitySchemes:
@@ -728,6 +970,51 @@ components:
           type: string
       required: [id, paymentId, userId, siteId, status]
 
+    ChatDto:
+      type: object
+      properties:
+        id:
+          type: string
+        siteId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        createdBy:
+          type: string
+        closedBy:
+          type: string
+        closedAt:
+          type: string
+        createdAt:
+          type: string
+      required: [id, siteId, title, status, createdBy, createdAt]
+
+    CreateChatRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        participantIds:
+          type: array
+          items:
+            type: string
+      required: [title]
+
+    ChatParticipantDto:
+      type: object
+      properties:
+        id:
+          type: string
+        chatId:
+          type: string
+        userId:
+          type: string
+        joinedAt:
+          type: string
+      required: [id, chatId, userId, joinedAt]
+
     MessageDto:
       type: object
       properties:
@@ -795,6 +1082,134 @@ components:
       required: [siteId, recipientUserId, recipientName, senderInfo, description]
 
     UpdatePackageStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    VendorCategoryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, description, createdAt]
+
+    VendorDto:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        status:
+          type: string
+        createdAt:
+          type: string
+      required: [id, userId, name, category, description, phone, address, status, createdAt]
+
+    CreateVendorRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+      required: [name, category]
+
+    UpdateVendorRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        status:
+          type: string
+
+    VendorRequestDto:
+      type: object
+      properties:
+        id:
+          type: string
+        siteId:
+          type: string
+        requestedBy:
+          type: string
+        vendorId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        assignedAt:
+          type: string
+        completedAt:
+          type: string
+        createdAt:
+          type: string
+      required: [id, siteId, requestedBy, title, description, status, createdAt]
+
+    CreateVendorRequestInput:
+      type: object
+      properties:
+        vendorId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+      required: [title, description]
+
+    UpdateVendorRequestStatusInput:
       type: object
       properties:
         status:

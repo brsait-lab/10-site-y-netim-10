@@ -357,6 +357,74 @@ export const PayDueResponse = zod.object({
 
 
 /**
+ * @summary Get chats for the current user
+ */
+export const GetChatsResponseItem = zod.object({
+  "id": zod.string(),
+  "siteId": zod.string(),
+  "title": zod.string(),
+  "status": zod.string(),
+  "createdBy": zod.string(),
+  "closedBy": zod.string().optional(),
+  "closedAt": zod.string().optional(),
+  "createdAt": zod.string()
+})
+export const GetChatsResponse = zod.array(GetChatsResponseItem)
+
+
+/**
+ * @summary Create a new chat
+ */
+export const CreateChatBody = zod.object({
+  "title": zod.string(),
+  "participantIds": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary Close a chat
+ */
+export const CloseChatParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const CloseChatResponse = zod.object({
+  "id": zod.string(),
+  "siteId": zod.string(),
+  "title": zod.string(),
+  "status": zod.string(),
+  "createdBy": zod.string(),
+  "closedBy": zod.string().optional(),
+  "closedAt": zod.string().optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Soft-delete a chat for the current user
+ */
+export const DeleteChatParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Get participants of a chat
+ */
+export const GetChatParticipantsParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetChatParticipantsResponseItem = zod.object({
+  "id": zod.string(),
+  "chatId": zod.string(),
+  "userId": zod.string(),
+  "joinedAt": zod.string()
+})
+export const GetChatParticipantsResponse = zod.array(GetChatParticipantsResponseItem)
+
+
+/**
  * @summary Get messages for a chat
  */
 export const GetMessagesQueryParams = zod.object({
@@ -434,6 +502,137 @@ export const UpdatePackageStatusResponse = zod.object({
   "status": zod.string(),
   "receivedAt": zod.string(),
   "deliveredAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Get all vendor categories
+ */
+export const GetVendorCategoriesResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "description": zod.string(),
+  "createdAt": zod.string()
+})
+export const GetVendorCategoriesResponse = zod.array(GetVendorCategoriesResponseItem)
+
+
+/**
+ * @summary Get vendors
+ */
+export const GetVendorsResponseItem = zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "name": zod.string(),
+  "category": zod.string(),
+  "description": zod.string(),
+  "phone": zod.string(),
+  "address": zod.string(),
+  "latitude": zod.number().optional(),
+  "longitude": zod.number().optional(),
+  "status": zod.string(),
+  "createdAt": zod.string()
+})
+export const GetVendorsResponse = zod.array(GetVendorsResponseItem)
+
+
+/**
+ * @summary Create a vendor profile
+ */
+export const CreateVendorBody = zod.object({
+  "name": zod.string(),
+  "category": zod.string(),
+  "description": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "address": zod.string().optional(),
+  "latitude": zod.number().optional(),
+  "longitude": zod.number().optional()
+})
+
+
+/**
+ * @summary Update a vendor profile
+ */
+export const UpdateVendorParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateVendorBody = zod.object({
+  "name": zod.string().optional(),
+  "category": zod.string().optional(),
+  "description": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "address": zod.string().optional(),
+  "latitude": zod.number().optional(),
+  "longitude": zod.number().optional(),
+  "status": zod.string().optional()
+})
+
+export const UpdateVendorResponse = zod.object({
+  "id": zod.string(),
+  "userId": zod.string(),
+  "name": zod.string(),
+  "category": zod.string(),
+  "description": zod.string(),
+  "phone": zod.string(),
+  "address": zod.string(),
+  "latitude": zod.number().optional(),
+  "longitude": zod.number().optional(),
+  "status": zod.string(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get vendor requests
+ */
+export const GetVendorRequestsResponseItem = zod.object({
+  "id": zod.string(),
+  "siteId": zod.string(),
+  "requestedBy": zod.string(),
+  "vendorId": zod.string().optional(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "status": zod.string(),
+  "assignedAt": zod.string().optional(),
+  "completedAt": zod.string().optional(),
+  "createdAt": zod.string()
+})
+export const GetVendorRequestsResponse = zod.array(GetVendorRequestsResponseItem)
+
+
+/**
+ * @summary Create a vendor request
+ */
+export const CreateVendorRequestBody = zod.object({
+  "vendorId": zod.string().optional(),
+  "title": zod.string(),
+  "description": zod.string()
+})
+
+
+/**
+ * @summary Update vendor request status
+ */
+export const UpdateVendorRequestStatusParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateVendorRequestStatusBody = zod.object({
+  "status": zod.string()
+})
+
+export const UpdateVendorRequestStatusResponse = zod.object({
+  "id": zod.string(),
+  "siteId": zod.string(),
+  "requestedBy": zod.string(),
+  "vendorId": zod.string().optional(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "status": zod.string(),
+  "assignedAt": zod.string().optional(),
+  "completedAt": zod.string().optional(),
+  "createdAt": zod.string()
 })
 
 

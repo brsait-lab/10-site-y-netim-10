@@ -1,0 +1,181 @@
+import { Router, Request, Response } from "express";
+import { prisma } from "../lib/prisma.js";
+import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
+
+const router = Router();
+
+function vendorToDto(v: Awaited<ReturnType<typeof prisma.vendor.findFirst>>) {
+  if (!v) return null;
+  return {
+    id: v.id,
+    userId: v.userId,
+    name: v.name,
+    category: v.category,
+    description: v.description,
+    phone: v.phone,
+    address: v.address,
+    latitude: v.latitude ?? undefined,
+    longitude: v.longitude ?? undefined,
+    status: v.status,
+    createdAt: v.createdAt.toISOString(),
+  };
+}
+
+function requestToDto(r: Awaited<ReturnType<typeof prisma.vendorRequest.findFirst>>) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    siteId: r.siteId,
+    requestedBy: r.requestedBy,
+    vendorId: r.vendorId ?? undefined,
+    title: r.title,
+    description: r.description,
+    status: r.status,
+    assignedAt: r.assignedAt?.toISOString(),
+    completedAt: r.completedAt?.toISOString(),
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+router.get("/vendor-categories", async (_req: Request, res: Response) => {
+  const cats = await prisma.vendorCategory.findMany({ orderBy: { name: "asc" } });
+  res.json(cats.map((c) => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    createdAt: c.createdAt.toISOString(),
+  })));
+});
+
+router.get("/vendors", requireAuth, async (req: Request, res: Response) => {
+  const { userId, role } = (req as AuthRequest).authUser;
+
+  if (role === "merchant") {
+    const vendor = await prisma.vendor.findFirst({ where: { userId } });
+    return res.json(vendor ? [vendorToDto(vendor)] : []);
+  }
+
+  const vendors = await prisma.vendor.findMany({
+    where: { status: "active" },
+    orderBy: { name: "asc" },
+  });
+  res.json(vendors.map(vendorToDto));
+});
+
+router.post("/vendors", requireAuth, async (req: Request, res: Response) => {
+  const { userId } = (req as AuthRequest).authUser;
+  const body = req.body as {
+    name: string;
+    category: string;
+    description?: string;
+    phone?: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+  };
+
+  const existing = await prisma.vendor.findFirst({ where: { userId } });
+  if (existing) {
+    res.status(400).json({ message: "Bu kullanıcı için zaten bir esnaf profili mevcut." });
+    return;
+  }
+
+  const vendor = await prisma.vendor.create({
+    data: {
+      userId,
+      name: body.name,
+      category: body.category,
+      description: body.description ?? "",
+      phone: body.phone ?? "",
+      address: body.address ?? "",
+      latitude: body.latitude,
+      longitude: body.longitude,
+      status: "active",
+    },
+  });
+  res.status(201).json(vendorToDto(vendor));
+});
+
+router.patch("/vendors/:id", requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { userId } = (req as AuthRequest).authUser;
+  const body = req.body as {
+    name?: string;
+    category?: string;
+    description?: string;
+    phone?: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+    status?: string;
+  };
+
+  const vendor = await prisma.vendor.findUnique({ where: { id } });
+  if (!vendor) { res.status(404).json({ message: "Esnaf bulunamadı." }); return; }
+  if (vendor.userId !== userId) { res.status(403).json({ message: "Bu esnaf profilini düzenleme yetkiniz yok." }); return; }
+
+  const updated = await prisma.vendor.update({ where: { id }, data: body });
+  res.json(vendorToDto(updated));
+});
+
+router.get("/vendor-requests", requireAuth, async (req: Request, res: Response) => {
+  const { userId, siteId, role } = (req as AuthRequest).authUser;
+
+  if (role === "merchant") {
+    const vendor = await prisma.vendor.findFirst({ where: { userId } });
+    if (!vendor) return res.json([]);
+    const requests = await prisma.vendorRequest.findMany({
+      where: { vendorId: vendor.id },
+      orderBy: { createdAt: "desc" },
+    });
+    return res.json(requests.map(requestToDto));
+  }
+
+  const requests = await prisma.vendorRequest.findMany({
+    where: { siteId },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(requests.map(requestToDto));
+});
+
+router.post("/vendor-requests", requireAuth, async (req: Request, res: Response) => {
+  const { userId, siteId } = (req as AuthRequest).authUser;
+  const body = req.body as {
+    vendorId?: string;
+    title: string;
+    description: string;
+  };
+
+  const request = await prisma.vendorRequest.create({
+    data: {
+      siteId,
+      requestedBy: userId,
+      vendorId: body.vendorId ?? null,
+      title: body.title,
+      description: body.description,
+      status: body.vendorId ? "assigned" : "pending",
+      assignedAt: body.vendorId ? new Date() : null,
+    },
+  });
+  res.status(201).json(requestToDto(request));
+});
+
+router.patch("/vendor-requests/:id/status", requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { status } = req.body as { status: string };
+
+  try {
+    const updated = await prisma.vendorRequest.update({
+      where: { id },
+      data: {
+        status,
+        completedAt: status === "completed" ? new Date() : undefined,
+      },
+    });
+    res.json(requestToDto(updated));
+  } catch {
+    res.status(404).json({ message: "Talep bulunamadı." });
+  }
+});
+
+export default router;

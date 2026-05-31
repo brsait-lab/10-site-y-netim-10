@@ -54,6 +54,16 @@ model Notification {
   @@map("notifications")
 }
 
+model NotificationRead {
+  id             String   @id @default(uuid())
+  notificationId String   @map("notification_id")
+  userId         String   @map("user_id")
+  readAt         DateTime @default(now()) @map("read_at")
+
+  @@unique([notificationId, userId])
+  @@map("notification_reads")
+}
+
 model Payment {
   id          String   @id @default(uuid())
   siteId      String   @map("site_id")
@@ -76,6 +86,30 @@ model UserPayment {
   paidAt    DateTime? @map("paid_at")
 
   @@map("user_payments")
+}
+
+model Chat {
+  id         String    @id @default(uuid())
+  siteId     String    @map("site_id")
+  title      String
+  status     String    @default("open")
+  createdBy  String    @map("created_by")
+  closedBy   String?   @map("closed_by")
+  closedAt   DateTime? @map("closed_at")
+  deletedFor String[]  @map("deleted_for")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@map("chats")
+}
+
+model ChatParticipant {
+  id       String   @id @default(uuid())
+  chatId   String   @map("chat_id")
+  userId   String   @map("user_id")
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  @@unique([chatId, userId])
+  @@map("chat_participants")
 }
 
 model Message {
@@ -101,4 +135,44 @@ model Package {
   deliveredAt     DateTime? @map("delivered_at")
 
   @@map("packages")
+}
+
+model VendorCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String   @default("")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("vendor_categories")
+}
+
+model Vendor {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  category    String
+  description String   @default("")
+  phone       String   @default("")
+  address     String   @default("")
+  latitude    Float?
+  longitude   Float?
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("vendors")
+}
+
+model VendorRequest {
+  id          String    @id @default(uuid())
+  siteId      String    @map("site_id")
+  requestedBy String    @map("requested_by")
+  vendorId    String?   @map("vendor_id")
+  title       String
+  description String
+  status      String    @default("pending")
+  assignedAt  DateTime? @map("assigned_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("vendor_requests")
 }
