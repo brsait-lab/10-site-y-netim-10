@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface SiteDto {
+  id: string;
+  name: string;
+  address: string;
+  adminId: string;
+  createdAt: string;
 }

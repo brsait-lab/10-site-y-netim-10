@@ -1,42 +1,37 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  approveUser as apiApproveUser,
+  getMe,
+  getSites,
+  getUsers,
+  login as apiLogin,
+  register as apiRegister,
+  rejectUser as apiRejectUser,
+  updateUser as apiUpdateUser,
+  type UserDto,
+  type SiteDto,
+} from "@workspace/api-client-react";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 export type UserRole = "admin" | "resident" | "security" | "merchant";
 export type UserStatus = "pending" | "active" | "rejected";
 
-export interface Site {
-  id: string;
-  name: string;
-  address: string;
-  adminId: string;
-  createdAt: string;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  password: string;
+export type User = UserDto & {
   role: UserRole;
-  siteId: string;
   status: UserStatus;
-  phone: string;
-  unitNo?: string;
-  plates?: string[];
-  businessName?: string;
-  businessCategory?: string;
-  businessDescription?: string;
-  businessAddress?: string;
-  latitude?: number;
-  longitude?: number;
-  createdAt: string;
-}
+};
+
+export type Site = SiteDto;
 
 interface AuthContextType {
   user: User | null;
   sites: Site[];
   isLoading: boolean;
-  login: (email: string, password: string, role: UserRole) => Promise<{ success: boolean; message: string }>;
+  login: (
+    email: string,
+    password: string,
+    role: UserRole,
+  ) => Promise<{ success: boolean; message: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   updateUser: (updates: Partial<User>) => Promise<void>;
@@ -67,11 +62,7 @@ export interface RegisterData {
   longitude?: number;
 }
 
-const STORAGE_KEYS = {
-  CURRENT_USER: "siteapp_current_user",
-  USERS: "siteapp_users",
-  SITES: "siteapp_sites",
-};
+const TOKEN_KEY = "siteapp_token";
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
@@ -81,10 +72,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadSites = useCallback(async () => {
-    const raw = await AsyncStorage.getItem(STORAGE_KEYS.SITES);
-    const s: Site[] = raw ? JSON.parse(raw) : [];
-    setSites(s);
-    return s;
+    try {
+      const data = await getSites();
+      setSites(data as Site[]);
+      return data as Site[];
+    } catch {
+      return [] as Site[];
+    }
   }, []);
 
   const refreshSites = useCallback(async () => {
@@ -95,14 +89,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       try {
         await loadSites();
-        const raw = await AsyncStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-        if (raw) {
-          const storedUser: User = JSON.parse(raw);
-          const usersRaw = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-          const users: User[] = usersRaw ? JSON.parse(usersRaw) : [];
-          const fresh = users.find((u) => u.id === storedUser.id);
-          setUser(fresh || storedUser);
+        const token = await AsyncStorage.getItem(TOKEN_KEY);
+        if (token) {
+          const me = await getMe();
+          setUser(me as User);
         }
+      } catch {
+        await AsyncStorage.removeItem(TOKEN_KEY);
       } finally {
         setIsLoading(false);
       }
@@ -110,155 +103,90 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     init();
   }, [loadSites]);
 
-  const getUsers = async (): Promise<User[]> => {
-    const raw = await AsyncStorage.getItem(STORAGE_KEYS.USERS);
-    return raw ? JSON.parse(raw) : [];
-  };
-
-  const saveUsers = async (users: User[]) => {
-    await AsyncStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-  };
-
   const login = async (email: string, password: string, role: UserRole) => {
-    const users = await getUsers();
-    const found = users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password && u.role === role
-    );
-    if (!found) return { success: false, message: "E-posta, şifre veya rol hatalı." };
-    if (found.status === "pending") return { success: false, message: "Hesabınız henüz onaylanmadı. Yönetici onayı bekleniyor." };
-    if (found.status === "rejected") return { success: false, message: "Hesabınız reddedildi. Lütfen yöneticinizle iletişime geçin." };
-    await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(found));
-    setUser(found);
-    return { success: true, message: "Giriş başarılı." };
+    try {
+      const result = await apiLogin({ email, password, role });
+      await AsyncStorage.setItem(TOKEN_KEY, result.token);
+      setUser(result.user as User);
+      return { success: true, message: "Giriş başarılı." };
+    } catch (err: unknown) {
+      const msg =
+        (err as { data?: { message?: string }; message?: string })?.data
+          ?.message ??
+        (err as { message?: string })?.message ??
+        "Giriş başarısız.";
+      return { success: false, message: msg };
+    }
   };
 
   const register = async (data: RegisterData) => {
-    const users = await getUsers();
-    const exists = users.find((u) => u.email.toLowerCase() === data.email.toLowerCase());
-    if (exists) return { success: false, message: "Bu e-posta adresi zaten kayıtlı." };
-
-    let siteId = data.siteId || "";
-
-    if (data.role === "admin") {
-      if (!data.siteName) return { success: false, message: "Site adı gereklidir." };
-      const sitesRaw = await AsyncStorage.getItem(STORAGE_KEYS.SITES);
-      const existingSites: Site[] = sitesRaw ? JSON.parse(sitesRaw) : [];
-      const siteExists = existingSites.find(
-        (s) => s.name.toLowerCase() === data.siteName!.toLowerCase()
-      );
-      if (siteExists) return { success: false, message: "Bu site adı zaten mevcut." };
-      const newSite: Site = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        name: data.siteName,
-        address: data.siteAddress || "",
-        adminId: "",
-        createdAt: new Date().toISOString(),
-      };
-      const newUser: User = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        name: data.name,
-        email: data.email,
-        password: data.password,
-        role: "admin",
-        siteId: newSite.id,
-        status: "active",
-        phone: data.phone,
-        createdAt: new Date().toISOString(),
-      };
-      newSite.adminId = newUser.id;
-      existingSites.push(newSite);
-      await AsyncStorage.setItem(STORAGE_KEYS.SITES, JSON.stringify(existingSites));
-      setSites(existingSites);
-      users.push(newUser);
-      await saveUsers(users);
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(newUser));
-      setUser(newUser);
-      return { success: true, message: "Hesap oluşturuldu." };
+    try {
+      const result = await apiRegister(data);
+      if (result.success && result.token && result.user) {
+        await AsyncStorage.setItem(TOKEN_KEY, result.token);
+        setUser(result.user as User);
+      }
+      return { success: result.success, message: result.message };
+    } catch (err: unknown) {
+      const msg =
+        (err as { data?: { message?: string }; message?: string })?.data
+          ?.message ??
+        (err as { message?: string })?.message ??
+        "Kayıt başarısız.";
+      return { success: false, message: msg };
     }
-
-    // Merchants don't need a site — they register globally and are found by location
-    if (data.role !== "merchant" && !siteId) {
-      return { success: false, message: "Lütfen bir site seçin." };
-    }
-
-    const newUser: User = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      name: data.name,
-      email: data.email,
-      password: data.password,
-      role: data.role,
-      siteId: siteId || "global",
-      status: data.role === "security" ? "active" : data.role === "merchant" ? "active" : "pending",
-      phone: data.phone,
-      unitNo: data.unitNo,
-      plates: data.plates,
-      businessName: data.businessName,
-      businessCategory: data.businessCategory,
-      businessDescription: data.businessDescription,
-      businessAddress: data.businessAddress,
-      latitude: data.latitude,
-      longitude: data.longitude,
-      createdAt: new Date().toISOString(),
-    };
-
-    users.push(newUser);
-    await saveUsers(users);
-
-    if (newUser.status === "active") {
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(newUser));
-      setUser(newUser);
-      return { success: true, message: "Kayıt başarılı." };
-    }
-
-    return { success: true, message: "Kayıt talebiniz alındı. Yönetici onayı bekleniyor." };
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    await AsyncStorage.removeItem(TOKEN_KEY);
     setUser(null);
   };
 
   const updateUser = async (updates: Partial<User>) => {
     if (!user) return;
-    const users = await getUsers();
-    const idx = users.findIndex((u) => u.id === user.id);
-    if (idx >= 0) {
-      users[idx] = { ...users[idx], ...updates };
-      await saveUsers(users);
-      const updated = users[idx];
-      await AsyncStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updated));
-      setUser(updated);
+    try {
+      const updated = await apiUpdateUser(user.id, updates);
+      setUser(updated as User);
+      await AsyncStorage.setItem(TOKEN_KEY, await AsyncStorage.getItem(TOKEN_KEY) ?? "");
+    } catch {
+      // silently fail
     }
   };
 
-  const getAllUsers = async () => getUsers();
+  const getAllUsers = async (): Promise<User[]> => {
+    if (!user) return [];
+    try {
+      const users = await getUsers({ siteId: user.siteId });
+      return users as User[];
+    } catch {
+      return [];
+    }
+  };
 
   const approveUser = async (userId: string) => {
-    const users = await getUsers();
-    const idx = users.findIndex((u) => u.id === userId);
-    if (idx >= 0) {
-      users[idx].status = "active";
-      await saveUsers(users);
-    }
+    await apiApproveUser(userId);
   };
 
   const rejectUser = async (userId: string) => {
-    const users = await getUsers();
-    const idx = users.findIndex((u) => u.id === userId);
-    if (idx >= 0) {
-      users[idx].status = "rejected";
-      await saveUsers(users);
+    await apiRejectUser(userId);
+  };
+
+  const getSiteUsers = async (siteId: string): Promise<User[]> => {
+    try {
+      const users = await getUsers({ siteId });
+      return users as User[];
+    } catch {
+      return [];
     }
   };
 
-  const getSiteUsers = async (siteId: string) => {
-    const users = await getUsers();
-    return users.filter((u) => u.siteId === siteId);
-  };
-
-  const getAllMerchants = async () => {
-    const users = await getUsers();
-    return users.filter((u) => u.role === "merchant");
+  const getAllMerchants = async (): Promise<User[]> => {
+    try {
+      const allUsers = await getUsers({ siteId: user?.siteId ?? "" });
+      return (allUsers as User[]).filter((u) => u.role === "merchant");
+    } catch {
+      return [];
+    }
   };
 
   return (

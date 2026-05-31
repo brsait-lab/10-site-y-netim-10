@@ -1,6 +1,5 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
   description: API specification
@@ -10,6 +9,20 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: users
+    description: User management
+  - name: sites
+    description: Site management
+  - name: notifications
+    description: Notifications
+  - name: payments
+    description: Payments
+  - name: messages
+    description: Messaging
+  - name: packages
+    description: Package tracking
 paths:
   /healthz:
     get:
@@ -24,13 +37,766 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Registration result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResult"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDto"
+
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: Get users for the current user's site
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: siteId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserDto"
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDto"
+
+  /users/{id}/approve:
+    patch:
+      operationId: approveUser
+      tags: [users]
+      summary: Approve a pending user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Approved user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDto"
+
+  /users/{id}/reject:
+    patch:
+      operationId: rejectUser
+      tags: [users]
+      summary: Reject a pending user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rejected user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDto"
+
+  /sites:
+    get:
+      operationId: getSites
+      tags: [sites]
+      summary: Get all sites
+      responses:
+        "200":
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SiteDto"
+
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [notifications]
+      summary: Get notifications for the current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NotificationDto"
+    post:
+      operationId: sendNotification
+      tags: [notifications]
+      summary: Send a notification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendNotificationRequest"
+      responses:
+        "201":
+          description: Created notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationDto"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Marked as read
+
+  /payments:
+    get:
+      operationId: getPayments
+      tags: [payments]
+      summary: Get payments for the current site
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PaymentDto"
+    post:
+      operationId: createPayment
+      tags: [payments]
+      summary: Create a payment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentRequest"
+      responses:
+        "201":
+          description: Created payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentDto"
+
+  /user-payments:
+    get:
+      operationId: getUserPayments
+      tags: [payments]
+      summary: Get user payment records
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of user payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserPaymentDto"
+
+  /user-payments/{id}/pay:
+    patch:
+      operationId: payDue
+      tags: [payments]
+      summary: Mark a user payment as paid
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated user payment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPaymentDto"
+
+  /messages:
+    get:
+      operationId: getMessages
+      tags: [messages]
+      summary: Get messages for a chat
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: chatId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MessageDto"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Sent message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageDto"
+
+  /packages:
+    get:
+      operationId: getPackages
+      tags: [packages]
+      summary: Get packages for the current site
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of packages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PackageDto"
+    post:
+      operationId: addPackage
+      tags: [packages]
+      summary: Add a package
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddPackageRequest"
+      responses:
+        "201":
+          description: Added package
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageDto"
+
+  /packages/{id}/status:
+    patch:
+      operationId: updatePackageStatus
+      tags: [packages]
+      summary: Update package status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePackageStatusRequest"
+      responses:
+        "200":
+          description: Updated package
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageDto"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+      required: [email, password, role]
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/UserDto"
+        token:
+          type: string
+      required: [user, token]
+
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+        phone:
+          type: string
+        siteId:
+          type: string
+        siteName:
+          type: string
+        siteAddress:
+          type: string
+        unitNo:
+          type: string
+        plates:
+          type: array
+          items:
+            type: string
+        businessName:
+          type: string
+        businessCategory:
+          type: string
+        businessDescription:
+          type: string
+        businessAddress:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+      required: [name, email, password, role, phone]
+
+    RegisterResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserDto"
+        token:
+          type: string
+      required: [success, message]
+
+    UserDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        siteId:
+          type: string
+        status:
+          type: string
+        phone:
+          type: string
+        unitNo:
+          type: string
+        plates:
+          type: array
+          items:
+            type: string
+        businessName:
+          type: string
+        businessCategory:
+          type: string
+        businessDescription:
+          type: string
+        businessAddress:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        createdAt:
+          type: string
+      required: [id, name, email, role, siteId, status, phone, createdAt]
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        unitNo:
+          type: string
+        plates:
+          type: array
+          items:
+            type: string
+        businessName:
+          type: string
+        businessCategory:
+          type: string
+        businessDescription:
+          type: string
+        businessAddress:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+
+    SiteDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        adminId:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, address, adminId, createdAt]
+
+    NotificationDto:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        fromUserId:
+          type: string
+        fromName:
+          type: string
+        toRoles:
+          type: array
+          items:
+            type: string
+        toUserIds:
+          type: array
+          items:
+            type: string
+        siteId:
+          type: string
+        readBy:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+      required: [id, type, title, message, fromUserId, fromName, siteId, readBy, createdAt]
+
+    SendNotificationRequest:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        fromUserId:
+          type: string
+        fromName:
+          type: string
+        toRoles:
+          type: array
+          items:
+            type: string
+        toUserIds:
+          type: array
+          items:
+            type: string
+        siteId:
+          type: string
+      required: [type, title, message, fromUserId, fromName, siteId]
+
+    PaymentDto:
+      type: object
+      properties:
+        id:
+          type: string
+        siteId:
+          type: string
+        title:
+          type: string
+        amount:
+          type: number
+          format: double
+        dueDate:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+      required: [id, siteId, title, amount, dueDate, type, createdAt]
+
+    CreatePaymentRequest:
+      type: object
+      properties:
+        siteId:
+          type: string
+        title:
+          type: string
+        amount:
+          type: number
+          format: double
+        dueDate:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+      required: [siteId, title, amount, dueDate, type]
+
+    UserPaymentDto:
+      type: object
+      properties:
+        id:
+          type: string
+        paymentId:
+          type: string
+        userId:
+          type: string
+        siteId:
+          type: string
+        status:
+          type: string
+        paidAt:
+          type: string
+      required: [id, paymentId, userId, siteId, status]
+
+    MessageDto:
+      type: object
+      properties:
+        id:
+          type: string
+        chatId:
+          type: string
+        fromId:
+          type: string
+        fromName:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+      required: [id, chatId, fromId, fromName, content, createdAt]
+
+    SendMessageRequest:
+      type: object
+      properties:
+        chatId:
+          type: string
+        toId:
+          type: string
+        content:
+          type: string
+      required: [chatId, content]
+
+    PackageDto:
+      type: object
+      properties:
+        id:
+          type: string
+        siteId:
+          type: string
+        recipientUserId:
+          type: string
+        recipientName:
+          type: string
+        senderInfo:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        receivedAt:
+          type: string
+        deliveredAt:
+          type: string
+      required: [id, siteId, recipientUserId, recipientName, senderInfo, description, status, receivedAt]
+
+    AddPackageRequest:
+      type: object
+      properties:
+        siteId:
+          type: string
+        recipientUserId:
+          type: string
+        recipientName:
+          type: string
+        senderInfo:
+          type: string
+        description:
+          type: string
+      required: [siteId, recipientUserId, recipientName, senderInfo, description]
+
+    UpdatePackageStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]

@@ -5,7 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UserDto } from './userDto';
 
-export interface HealthStatus {
-  status: string;
+export interface AuthResponse {
+  user: UserDto;
+  token: string;
 }

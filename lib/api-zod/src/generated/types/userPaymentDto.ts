@@ -6,6 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
+export interface UserPaymentDto {
+  id: string;
+  paymentId: string;
+  userId: string;
+  siteId: string;
   status: string;
+  paidAt?: string;
 }
