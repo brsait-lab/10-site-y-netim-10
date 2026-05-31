@@ -7,11 +7,63 @@ import { useAuth, Site } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
 
+function ActionCard({
+  icon,
+  label,
+  sub,
+  badge,
+  badgeColor,
+  value,
+  onPress,
+  accent,
+  highlight,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  sub?: string;
+  badge?: string | number;
+  badgeColor?: string;
+  value?: string;
+  onPress: () => void;
+  accent?: string;
+  highlight?: boolean;
+}) {
+  const colors = useColors();
+  const iconColor = accent ?? colors.primary;
+  const bg = highlight ? "#fef3c7" : (accent ? accent + "12" : colors.card);
+  const border = highlight ? "#fcd34d" : colors.border;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: pressed ? colors.muted : bg, borderRadius: 16, borderColor: border },
+      ]}
+    >
+      <View style={[styles.cardIcon, { backgroundColor: iconColor + "20", borderRadius: 12 }]}>
+        <Feather name={icon} size={22} color={highlight ? "#92400e" : iconColor} />
+      </View>
+      {badge !== undefined && (
+        <View style={[styles.badge, { backgroundColor: badgeColor ?? colors.primary, borderRadius: 10 }]}>
+          <Text style={styles.badgeText}>{badge}</Text>
+        </View>
+      )}
+      {value !== undefined && (
+        <Text style={[styles.cardValue, { color: highlight ? "#92400e" : colors.foreground }]}>{value}</Text>
+      )}
+      <Text style={[styles.cardLabel, { color: highlight ? "#92400e" : colors.foreground }]}>{label}</Text>
+      {sub && <Text style={[styles.cardSub, { color: highlight ? "#a16207" : colors.mutedForeground }]}>{sub}</Text>}
+      <Feather name="chevron-right" size={14} color={highlight ? "#a16207" : colors.mutedForeground} style={styles.cardChevron} />
+    </Pressable>
+  );
+}
+
 export default function ResidentHome() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, sites } = useAuth();
-  const { notifications, payments, userPayments, getMyNotifications, refresh } = useData();
+  const { payments, userPayments, unreadCount, chats, refresh } = useData();
   const [site, setSite] = useState<Site | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -21,20 +73,19 @@ export default function ResidentHome() {
 
   const onRefresh = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
-  const myNotifs = getMyNotifications().slice(0, 5);
   const myUPs = userPayments.filter((up) => up.userId === user?.id && up.status === "pending");
   const pendingPaymentTotal = myUPs.reduce((sum, up) => {
     const p = payments.find((p) => p.id === up.paymentId);
     return sum + (p?.amount || 0);
   }, 0);
-  const paidCount = userPayments.filter((up) => up.userId === user?.id && up.status === "paid").length;
+  const openChats = chats.filter((c) => c.status === "open").length;
 
-  const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   return (
     <ScrollView
       style={[styles.root, { backgroundColor: colors.background }]}
-      contentContainerStyle={[styles.scroll, { paddingTop: topPadding + 16, paddingBottom: insets.bottom + 100 }]}
+      contentContainerStyle={{ paddingTop: topPad + 16, paddingBottom: insets.bottom + 100, paddingHorizontal: 16, gap: 16 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
@@ -45,55 +96,63 @@ export default function ResidentHome() {
       </View>
 
       {user?.unitNo && (
-        <View style={[styles.unitBanner, { backgroundColor: colors.primaryLight, borderRadius: colors.radius }]}>
-          <Feather name="home" size={16} color={colors.primary} />
-          <Text style={[styles.unitText, { color: colors.primary }]}>Daireniz: <Text style={styles.unitBold}>{user.unitNo}</Text></Text>
+        <View style={[styles.unitBanner, { backgroundColor: colors.primaryLight, borderRadius: 12 }]}>
+          <Feather name="home" size={15} color={colors.primary} />
+          <Text style={[styles.unitText, { color: colors.primary }]}>
+            Daireniz: <Text style={{ fontFamily: "Inter_700Bold" }}>{user.unitNo}</Text>
+          </Text>
         </View>
       )}
 
-      <View style={styles.statsRow}>
-        <Pressable
-          onPress={() => router.push({ pathname: "/(resident)/payments", params: { tab: "aidat", status: "pending" } })}
-          style={[styles.statCard, { backgroundColor: myUPs.length > 0 ? "#fef3c7" : colors.card, borderRadius: colors.radius, borderColor: myUPs.length > 0 ? "#fcd34d" : colors.border }]}
-        >
-          <Feather name="credit-card" size={20} color={myUPs.length > 0 ? "#92400e" : colors.primary} />
-          <Text style={[styles.statValue, { color: myUPs.length > 0 ? "#92400e" : colors.foreground }]}>₺{pendingPaymentTotal.toLocaleString("tr-TR")}</Text>
-          <Text style={[styles.statLabel, { color: myUPs.length > 0 ? "#a16207" : colors.mutedForeground }]}>Bekleyen Borç</Text>
-          <Feather name="chevron-right" size={12} color={myUPs.length > 0 ? "#a16207" : colors.mutedForeground} />
-        </Pressable>
-        <Pressable
-          onPress={() => router.push({ pathname: "/(resident)/payments", params: { tab: "aidat", status: "paid" } })}
-          style={[styles.statCard, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}
-        >
-          <Feather name="check-circle" size={20} color={colors.primary} />
-          <Text style={[styles.statValue, { color: colors.foreground }]}>{paidCount}</Text>
-          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Ödenen</Text>
-          <Feather name="chevron-right" size={12} color={colors.mutedForeground} />
-        </Pressable>
-        <View style={[styles.statCard, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
-          <Feather name="bell" size={20} color={colors.primary} />
-          <Text style={[styles.statValue, { color: colors.foreground }]}>{myNotifs.length}</Text>
-          <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Bildirim</Text>
-        </View>
-      </View>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Panel</Text>
 
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Son Duyurular</Text>
-      <View style={[styles.card, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
-        {myNotifs.length === 0 ? (
-          <View style={styles.empty}>
-            <Feather name="bell" size={28} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Henüz bildirim yok</Text>
-          </View>
-        ) : myNotifs.map((n, idx) => (
-          <View key={n.id} style={[styles.notifRow, idx < myNotifs.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-            <View style={[styles.notifDot, { backgroundColor: n.type === "payment" ? "#fcd34d" : colors.primary }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.notifTitle, { color: colors.foreground }]}>{n.title}</Text>
-              <Text style={[styles.notifMsg, { color: colors.mutedForeground }]} numberOfLines={2}>{n.message}</Text>
-              <Text style={[styles.notifTime, { color: colors.mutedForeground }]}>{new Date(n.createdAt).toLocaleDateString("tr-TR")}</Text>
-            </View>
-          </View>
-        ))}
+      <View style={styles.grid}>
+        <ActionCard
+          icon="credit-card"
+          label="Aidatlarım"
+          value={pendingPaymentTotal > 0 ? `₺${pendingPaymentTotal.toLocaleString("tr-TR")}` : undefined}
+          sub={pendingPaymentTotal > 0 ? "bekleyen borç" : "Borç yok"}
+          highlight={pendingPaymentTotal > 0}
+          badge={myUPs.length > 0 ? myUPs.length : undefined}
+          badgeColor="#f59e0b"
+          onPress={() => router.push("/(resident)/payments")}
+        />
+        <ActionCard
+          icon="bell"
+          label="Bildirimler"
+          sub="Duyuru ve mesajlar"
+          badge={unreadCount > 0 ? unreadCount : undefined}
+          onPress={() => router.push("/(resident)/notifications")}
+        />
+        <ActionCard
+          icon="package"
+          label="Kargo Bildirimi"
+          sub="Güvenliğe bildir"
+          onPress={() => router.push({ pathname: "/(resident)/notifications", params: { action: "cargo" } })}
+          accent="#8b5cf6"
+        />
+        <ActionCard
+          icon="volume-2"
+          label="Gürültü Bildirimi"
+          sub="Komşuya bildir"
+          onPress={() => router.push({ pathname: "/(resident)/notifications", params: { action: "noise" } })}
+          accent="#ef4444"
+        />
+        <ActionCard
+          icon="shopping-bag"
+          label="Esnaf Bul"
+          sub="Hizmet & işletmeler"
+          onPress={() => router.push("/(resident)/merchants")}
+          accent="#f59e0b"
+        />
+        <ActionCard
+          icon="message-circle"
+          label="Sohbetlerim"
+          sub={openChats > 0 ? `${openChats} açık sohbet` : "Mesajlaşma"}
+          badge={openChats > 0 ? openChats : undefined}
+          onPress={() => router.push("/(resident)/chats")}
+          accent="#3b82f6"
+        />
       </View>
     </ScrollView>
   );
@@ -101,24 +160,23 @@ export default function ResidentHome() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 16, gap: 16 },
   greeting: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  name: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  name: { fontSize: 24, fontFamily: "Inter_700Bold" },
   siteName: { fontSize: 14, fontFamily: "Inter_500Medium", marginTop: 2 },
   unitBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12 },
   unitText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  unitBold: { fontFamily: "Inter_700Bold" },
-  statsRow: { flexDirection: "row", gap: 10 },
-  statCard: { flex: 1, alignItems: "center", padding: 14, gap: 6, borderWidth: 1 },
-  statValue: { fontSize: 16, fontFamily: "Inter_700Bold" },
-  statLabel: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" },
-  sectionTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
-  card: { borderWidth: 1, overflow: "hidden" },
-  notifRow: { padding: 14, flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  notifDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
-  notifTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  notifMsg: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
-  notifTime: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 4 },
-  empty: { padding: 32, alignItems: "center", gap: 8 },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  card: {
+    width: "47%", flexGrow: 1, padding: 16, gap: 6, borderWidth: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    position: "relative",
+  },
+  cardIcon: { padding: 10, alignSelf: "flex-start" },
+  badge: { position: "absolute", top: 12, right: 12, minWidth: 22, height: 22, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  badgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff" },
+  cardValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  cardLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  cardSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  cardChevron: { alignSelf: "flex-end", marginTop: 2 },
 });

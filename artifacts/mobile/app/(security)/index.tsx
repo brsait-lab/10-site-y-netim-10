@@ -1,16 +1,60 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useAuth, Site } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
+
+function ActionCard({
+  icon,
+  label,
+  sub,
+  badge,
+  badgeColor,
+  onPress,
+  accent,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  sub?: string;
+  badge?: string | number;
+  badgeColor?: string;
+  onPress: () => void;
+  accent?: string;
+}) {
+  const colors = useColors();
+  const iconColor = accent ?? colors.primary;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: pressed ? colors.muted : (accent ? accent + "12" : colors.card), borderRadius: 16, borderColor: colors.border },
+      ]}
+    >
+      <View style={[styles.cardIcon, { backgroundColor: iconColor + "20", borderRadius: 12 }]}>
+        <Feather name={icon} size={22} color={iconColor} />
+      </View>
+      {badge !== undefined && (
+        <View style={[styles.badge, { backgroundColor: badgeColor ?? colors.primary, borderRadius: 10 }]}>
+          <Text style={styles.badgeText}>{badge}</Text>
+        </View>
+      )}
+      <Text style={[styles.cardLabel, { color: colors.foreground }]}>{label}</Text>
+      {sub && <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>{sub}</Text>}
+      <Feather name="chevron-right" size={14} color={colors.mutedForeground} style={styles.cardChevron} />
+    </Pressable>
+  );
+}
 
 export default function SecurityDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, sites } = useAuth();
-  const { packages, notifications, getMyNotifications, refresh } = useData();
+  const { packages, unreadCount, chats, refresh } = useData();
   const [refreshing, setRefreshing] = useState(false);
   const [site, setSite] = useState<Site | null>(null);
 
@@ -21,20 +65,19 @@ export default function SecurityDashboard() {
   const onRefresh = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
   const sitePackages = packages.filter((p) => p.siteId === user?.siteId);
-  const pendingPkgs = sitePackages.filter((p) => p.status !== "delivered");
+  const pendingPkgs = sitePackages.filter((p) => p.status !== "delivered").length;
   const deliveredToday = sitePackages.filter((p) => {
     if (p.status !== "delivered" || !p.deliveredAt) return false;
-    const today = new Date().toDateString();
-    return new Date(p.deliveredAt).toDateString() === today;
-  });
-  const myNotifs = getMyNotifications().slice(0, 4);
+    return new Date(p.deliveredAt).toDateString() === new Date().toDateString();
+  }).length;
+  const openChats = chats.filter((c) => c.status === "open").length;
 
-  const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   return (
     <ScrollView
       style={[styles.root, { backgroundColor: colors.background }]}
-      contentContainerStyle={[styles.scroll, { paddingTop: topPadding + 16, paddingBottom: insets.bottom + 100 }]}
+      contentContainerStyle={{ paddingTop: topPad + 16, paddingBottom: insets.bottom + 100, paddingHorizontal: 16, gap: 16 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
@@ -44,97 +87,85 @@ export default function SecurityDashboard() {
         {site && <Text style={[styles.siteName, { color: colors.primary }]}>{site.name}</Text>}
       </View>
 
-      <View style={styles.statsGrid}>
+      <View style={[styles.statsRow, { backgroundColor: colors.card, borderRadius: 14, borderColor: colors.border }]}>
         {[
-          { label: "Bekleyen Kargo", value: pendingPkgs.length, icon: "package" as const, color: colors.warning },
-          { label: "Bugün Teslim", value: deliveredToday.length, icon: "check-circle" as const, color: colors.primary },
-          { label: "Bildirim", value: myNotifs.length, icon: "bell" as const, color: colors.info },
-          { label: "Toplam Kargo", value: sitePackages.length, icon: "archive" as const, color: "#64748b" },
-        ].map((stat) => (
-          <View key={stat.label} style={[styles.statCard, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
-            <View style={[styles.statIcon, { backgroundColor: stat.color + "20", borderRadius: 10 }]}>
-              <Feather name={stat.icon} size={20} color={stat.color} />
-            </View>
-            <Text style={[styles.statValue, { color: colors.foreground }]}>{stat.value}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{stat.label}</Text>
+          { label: "Bekleyen Kargo", value: pendingPkgs, color: "#f59e0b" },
+          { label: "Bugün Teslim", value: deliveredToday, color: colors.primary },
+          { label: "Toplam Kargo", value: sitePackages.length, color: "#64748b" },
+        ].map((s, i) => (
+          <View key={s.label} style={[styles.statItem, i > 0 && { borderLeftWidth: 1, borderLeftColor: colors.border }]}>
+            <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
           </View>
         ))}
       </View>
 
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Bekleyen Kargolar</Text>
-      <View style={[styles.card, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
-        {pendingPkgs.slice(0, 5).length === 0 ? (
-          <View style={styles.empty}>
-            <Feather name="package" size={28} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Bekleyen kargo yok</Text>
-          </View>
-        ) : pendingPkgs.slice(0, 5).map((pkg, idx, arr) => (
-          <View key={pkg.id} style={[styles.pkgRow, idx < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-            <View style={[styles.pkgIcon, { backgroundColor: colors.primaryLight, borderRadius: 10 }]}>
-              <Feather name="package" size={18} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.pkgName, { color: colors.foreground }]}>{pkg.recipientName}</Text>
-              <Text style={[styles.pkgSender, { color: colors.mutedForeground }]} numberOfLines={1}>{pkg.senderInfo}</Text>
-            </View>
-            <View style={[
-              styles.statusPill,
-              {
-                backgroundColor: pkg.status === "received" ? "#fef3c7" : "#dbeafe",
-                borderRadius: 10,
-              },
-            ]}>
-              <Text style={[styles.statusText, { color: pkg.status === "received" ? "#92400e" : "#1e40af" }]}>
-                {pkg.status === "received" ? "Alındı" : "Bildirildi"}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Hızlı Erişim</Text>
 
-      {myNotifs.length > 0 && (
-        <>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Son Bildirimler</Text>
-          <View style={[styles.card, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
-            {myNotifs.map((n, idx) => (
-              <View key={n.id} style={[styles.notifRow, idx < myNotifs.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
-                <View style={[styles.notifDot, { backgroundColor: colors.primary }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.notifTitle, { color: colors.foreground }]}>{n.title}</Text>
-                  <Text style={[styles.notifMsg, { color: colors.mutedForeground }]} numberOfLines={1}>{n.message}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        </>
-      )}
+      <View style={styles.grid}>
+        <ActionCard
+          icon="package"
+          label="Kargo Yönetimi"
+          sub={`${pendingPkgs} bekliyor`}
+          badge={pendingPkgs > 0 ? pendingPkgs : undefined}
+          badgeColor="#f59e0b"
+          onPress={() => router.push("/(security)/packages")}
+          accent="#f59e0b"
+        />
+        <ActionCard
+          icon="bell"
+          label="Gelen Bildirimler"
+          sub="Duyuru ve talepler"
+          badge={unreadCount > 0 ? unreadCount : undefined}
+          onPress={() => router.push("/(security)/notifications")}
+        />
+        <ActionCard
+          icon="shopping-bag"
+          label="Esnaf Yönlendirme"
+          sub="İşletme rehberi"
+          onPress={() => router.push("/(security)/merchants")}
+          accent="#8b5cf6"
+        />
+        <ActionCard
+          icon="volume-2"
+          label="Site Duyuruları"
+          sub="Sakinlere bildir"
+          onPress={() => router.push("/(security)/notifications")}
+          accent="#3b82f6"
+        />
+        <ActionCard
+          icon="message-circle"
+          label="Sohbetler"
+          sub={openChats > 0 ? `${openChats} açık` : "Mesajlaşma"}
+          badge={openChats > 0 ? openChats : undefined}
+          onPress={() => router.push("/(security)/chats")}
+          accent="#10b981"
+        />
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 16, gap: 16 },
   greeting: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  name: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  name: { fontSize: 24, fontFamily: "Inter_700Bold" },
   siteName: { fontSize: 14, fontFamily: "Inter_500Medium", marginTop: 2 },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  statCard: { width: "47%", flexGrow: 1, padding: 14, gap: 8, alignItems: "center", borderWidth: 1 },
-  statIcon: { padding: 8 },
-  statValue: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  statsRow: { flexDirection: "row", borderWidth: 1, overflow: "hidden" },
+  statItem: { flex: 1, alignItems: "center", padding: 14, gap: 4 },
+  statValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
   statLabel: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" },
-  sectionTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
-  card: { borderWidth: 1, overflow: "hidden" },
-  pkgRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  pkgIcon: { padding: 10 },
-  pkgName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  pkgSender: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  statusPill: { paddingHorizontal: 10, paddingVertical: 4 },
-  statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  notifRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  notifDot: { width: 8, height: 8, borderRadius: 4 },
-  notifTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  notifMsg: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  empty: { padding: 24, alignItems: "center", gap: 8 },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  card: {
+    width: "47%", flexGrow: 1, padding: 16, gap: 6, borderWidth: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    position: "relative",
+  },
+  cardIcon: { padding: 10, alignSelf: "flex-start" },
+  badge: { position: "absolute", top: 12, right: 12, minWidth: 22, height: 22, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  badgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff" },
+  cardLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  cardSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  cardChevron: { alignSelf: "flex-end", marginTop: 2 },
 });

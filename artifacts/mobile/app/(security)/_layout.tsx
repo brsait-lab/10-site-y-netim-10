@@ -43,6 +43,7 @@ function ClassicSecurityTabs() {
       <Tabs.Screen name="merchants" options={{ title: "Esnaflar", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="storefront.fill" tintColor={color} size={22} /> : <Feather name="shopping-bag" size={22} color={color} /> }} />
       <Tabs.Screen name="notifications" options={{ title: "Bildirimler", tabBarBadge: unreadCount > 0 ? unreadCount : undefined, tabBarIcon: ({ color }) => isIOS ? <SymbolView name="bell.fill" tintColor={color} size={22} /> : <Feather name="bell" size={22} color={color} /> }} />
       <Tabs.Screen name="profile" options={{ title: "Profil", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.crop.circle.fill" tintColor={color} size={22} /> : <Feather name="user" size={22} color={color} /> }} />
+      <Tabs.Screen name="chats" options={{ href: null }} />
     </Tabs>
   );
 }

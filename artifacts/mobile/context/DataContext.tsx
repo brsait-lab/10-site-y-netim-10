@@ -1,6 +1,9 @@
 import {
   addPackage as apiAddPackage,
+  createChat as apiCreateChat,
+  closeChat as apiCloseChat,
   createPayment as apiCreatePayment,
+  getChats,
   getMessages,
   getNotifications,
   getPackages,
@@ -16,6 +19,7 @@ import {
   type UserPaymentDto,
   type MessageDto,
   type PackageDto,
+  type ChatDto,
 } from "@workspace/api-client-react";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
@@ -34,6 +38,7 @@ export type Payment = PaymentDto;
 export type UserPayment = UserPaymentDto;
 export type Message = MessageDto;
 export type Package = PackageDto;
+export type Chat = ChatDto;
 
 interface DataContextType {
   notifications: AppNotification[];
@@ -41,21 +46,20 @@ interface DataContextType {
   userPayments: UserPayment[];
   messages: Message[];
   packages: Package[];
+  chats: Chat[];
   unreadCount: number;
-  sendNotification: (
-    data: Omit<AppNotification, "id" | "createdAt" | "readBy">,
-  ) => Promise<void>;
+  sendNotification: (data: Omit<AppNotification, "id" | "createdAt" | "readBy">) => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   createPayment: (data: Omit<Payment, "id" | "createdAt">) => Promise<void>;
   payDue: (userPaymentId: string) => Promise<void>;
   sendMessage: (chatId: string, toId: string, content: string) => Promise<void>;
   getChat: (chatId: string) => Message[];
   addPackage: (data: Omit<Package, "id" | "receivedAt">) => Promise<void>;
-  updatePackageStatus: (
-    packageId: string,
-    status: Package["status"],
-  ) => Promise<void>;
+  updatePackageStatus: (packageId: string, status: Package["status"]) => Promise<void>;
   getMyNotifications: () => AppNotification[];
+  openChat: (title: string, participantIds: string[]) => Promise<Chat>;
+  closeMyChat: (chatId: string) => Promise<void>;
+  deleteMyChat: (chatId: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -68,22 +72,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [userPayments, setUserPayments] = useState<UserPayment[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
 
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const [n, p, up, m, pk] = await Promise.all([
+      const [n, p, up, m, pk, ch] = await Promise.all([
         getNotifications(),
         getPayments(),
         getUserPayments(),
         getMessages({}),
         getPackages(),
+        getChats(),
       ]);
       setNotifications(n as AppNotification[]);
       setPayments(p as Payment[]);
       setUserPayments(up as UserPayment[]);
       setMessages(m as Message[]);
       setPackages(pk as Package[]);
+      setChats(ch as Chat[]);
     } catch {
       // ignore load errors silently
     }
@@ -100,27 +107,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return notifications
       .filter((n) => {
         if (n.siteId !== user.siteId) return false;
-        if (n.toUserIds && n.toUserIds.length > 0) {
-          return n.toUserIds.includes(user.id);
-        }
-        if (n.toRoles && n.toRoles.length > 0) {
-          return n.toRoles.includes(user.role);
-        }
+        if (n.toUserIds && n.toUserIds.length > 0) return n.toUserIds.includes(user.id);
+        if (n.toRoles && n.toRoles.length > 0) return n.toRoles.includes(user.role);
         return true;
       })
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [notifications, user]);
 
   const unreadCount = getMyNotifications().filter(
     (n) => !n.readBy.includes(user?.id ?? ""),
   ).length;
 
-  const sendNotification = async (
-    data: Omit<AppNotification, "id" | "createdAt" | "readBy">,
-  ) => {
+  const sendNotification = async (data: Omit<AppNotification, "id" | "createdAt" | "readBy">) => {
     const newN = await apiSendNotification(data);
     setNotifications((prev) => [...prev, newN as AppNotification]);
   };
@@ -160,10 +158,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     (chatId: string) =>
       messages
         .filter((m) => m.chatId === chatId)
-        .sort(
-          (a, b) =>
-            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-        ),
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
     [messages],
   );
 
@@ -172,14 +167,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setPackages((prev) => [...prev, newPkg as Package]);
   };
 
-  const updatePackageStatus = async (
-    packageId: string,
-    status: Package["status"],
-  ) => {
+  const updatePackageStatus = async (packageId: string, status: Package["status"]) => {
     const updated = await apiUpdatePackageStatus(packageId, { status });
     setPackages((prev) =>
       prev.map((p) => (p.id === packageId ? (updated as Package) : p)),
     );
+  };
+
+  const openChat = async (title: string, participantIds: string[]): Promise<Chat> => {
+    const chat = await apiCreateChat({ title, participantIds });
+    setChats((prev) => [chat as Chat, ...prev]);
+    return chat as Chat;
+  };
+
+  const closeMyChat = async (chatId: string) => {
+    const updated = await apiCloseChat(chatId);
+    setChats((prev) => prev.map((c) => c.id === chatId ? (updated as Chat) : c));
+  };
+
+  const deleteMyChat = async (chatId: string) => {
+    setChats((prev) => prev.filter((c) => c.id !== chatId));
   };
 
   return (
@@ -190,6 +197,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         userPayments,
         messages,
         packages,
+        chats,
         unreadCount,
         sendNotification,
         markNotificationRead,
@@ -200,6 +208,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         addPackage,
         updatePackageStatus,
         getMyNotifications,
+        openChat,
+        closeMyChat,
+        deleteMyChat,
         refresh,
       }}
     >

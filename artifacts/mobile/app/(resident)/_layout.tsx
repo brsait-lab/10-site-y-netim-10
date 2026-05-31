@@ -54,6 +54,7 @@ function ClassicResidentTabs() {
       <Tabs.Screen name="payments" options={{ title: "Ödemeler", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="creditcard.fill" tintColor={color} size={22} /> : <Feather name="credit-card" size={22} color={color} /> }} />
       <Tabs.Screen name="merchants" options={{ title: "Esnaflar", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="bag.fill" tintColor={color} size={22} /> : <Feather name="shopping-bag" size={22} color={color} /> }} />
       <Tabs.Screen name="profile" options={{ title: "Profil", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.crop.circle.fill" tintColor={color} size={22} /> : <Feather name="user" size={22} color={color} /> }} />
+      <Tabs.Screen name="chats" options={{ href: null }} />
     </Tabs>
   );
 }

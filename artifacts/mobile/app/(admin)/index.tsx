@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -9,21 +10,58 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useAuth, User } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
 import { LogoBadge } from "@/components/TreeLogo";
 
-function StatCard({ label, value, icon, color }: { label: string; value: string | number; icon: keyof typeof Feather.glyphMap; color: string }) {
+function ActionCard({
+  icon,
+  label,
+  sub,
+  badge,
+  badgeColor,
+  value,
+  onPress,
+  accent,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  sub?: string;
+  badge?: string | number;
+  badgeColor?: string;
+  value?: string;
+  onPress: () => void;
+  accent?: string;
+}) {
   const colors = useColors();
+  const bg = accent ? accent + "12" : colors.card;
+  const iconColor = accent ?? colors.primary;
+
   return (
-    <View style={[styles.statCard, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
-      <View style={[styles.statIcon, { backgroundColor: color + "20", borderRadius: 10 }]}>
-        <Feather name={icon} size={20} color={color} />
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: pressed ? colors.muted : bg, borderRadius: 16, borderColor: colors.border },
+      ]}
+    >
+      <View style={[styles.cardIcon, { backgroundColor: iconColor + "20", borderRadius: 12 }]}>
+        <Feather name={icon} size={22} color={iconColor} />
       </View>
-      <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
-    </View>
+      {badge !== undefined && (
+        <View style={[styles.badge, { backgroundColor: badgeColor ?? colors.primary, borderRadius: 10 }]}>
+          <Text style={styles.badgeText}>{badge}</Text>
+        </View>
+      )}
+      {value !== undefined && (
+        <Text style={[styles.cardValue, { color: colors.foreground }]}>{value}</Text>
+      )}
+      <Text style={[styles.cardLabel, { color: colors.foreground }]}>{label}</Text>
+      {sub && <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>{sub}</Text>}
+      <Feather name="chevron-right" size={14} color={colors.mutedForeground} style={styles.cardChevron} />
+    </Pressable>
   );
 }
 
@@ -50,33 +88,26 @@ export default function AdminDashboard() {
   };
 
   const pendingCount = siteUsers.filter((u) => u.status === "pending").length;
-  const activeCount = siteUsers.filter((u) => u.status === "active" && u.role !== "admin").length;
+  const activeResidents = siteUsers.filter((u) => u.status === "active" && u.role === "resident").length;
   const sitePayments = payments.filter((p) => p.siteId === user?.siteId);
   const siteUPs = userPayments.filter((up) => up.siteId === user?.siteId);
   const paidAmount = siteUPs
     .filter((up) => up.status === "paid")
-    .reduce((sum, up) => {
-      const p = sitePayments.find((p) => p.id === up.paymentId);
-      return sum + (p?.amount || 0);
-    }, 0);
+    .reduce((sum, up) => sum + (sitePayments.find((p) => p.id === up.paymentId)?.amount || 0), 0);
   const pendingAmount = siteUPs
     .filter((up) => up.status === "pending")
-    .reduce((sum, up) => {
-      const p = sitePayments.find((p) => p.id === up.paymentId);
-      return sum + (p?.amount || 0);
-    }, 0);
-  const siteNotifications = notifications.filter((n) => n.siteId === user?.siteId);
+    .reduce((sum, up) => sum + (sitePayments.find((p) => p.id === up.paymentId)?.amount || 0), 0);
 
-  const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   return (
     <ScrollView
       style={[styles.root, { backgroundColor: colors.background }]}
-      contentContainerStyle={[styles.scroll, { paddingTop: topPadding + 16, paddingBottom: insets.bottom + 40 }]}
+      contentContainerStyle={{ paddingTop: topPad + 16, paddingBottom: insets.bottom + 100, paddingHorizontal: 16, gap: 16 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.headerRow}>
+      <View style={styles.header}>
         <View>
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Hoş geldiniz,</Text>
           <Text style={[styles.name, { color: colors.foreground }]}>{user?.name}</Text>
@@ -85,26 +116,70 @@ export default function AdminDashboard() {
       </View>
 
       {pendingCount > 0 && (
-        <View style={[styles.alertBanner, { backgroundColor: "#fef3c7", borderRadius: colors.radius }]}>
-          <Feather name="clock" size={16} color={colors.warning} />
+        <Pressable
+          onPress={() => router.push("/(admin)/users")}
+          style={[styles.alertBanner, { backgroundColor: "#fef3c7", borderRadius: 12 }]}
+        >
+          <Feather name="clock" size={15} color="#92400e" />
           <Text style={[styles.alertText, { color: "#92400e" }]}>
-            {pendingCount} kullanıcı onay bekliyor
+            {pendingCount} kullanıcı onay bekliyor — görüntüle
           </Text>
-        </View>
+          <Feather name="chevron-right" size={14} color="#92400e" />
+        </Pressable>
       )}
 
-      <View style={styles.statsGrid}>
-        <StatCard label="Aktif Üye" value={activeCount} icon="users" color={colors.primary} />
-        <StatCard label="Bekleyen" value={pendingCount} icon="clock" color={colors.warning} />
-        <StatCard label="Bildirim" value={siteNotifications.length} icon="bell" color={colors.info} />
-        <StatCard label="Gelen Ödeme" value={`₺${paidAmount.toLocaleString("tr-TR")}`} icon="trending-up" color="#10b981" />
-        <StatCard label="Bekleyen Ödeme" value={`₺${pendingAmount.toLocaleString("tr-TR")}`} icon="alert-circle" color={colors.destructive} />
-        <StatCard label="Toplam Aidat" value={sitePayments.length} icon="file-text" color="#8b5cf6" />
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Hızlı Erişim</Text>
+
+      <View style={styles.grid}>
+        <ActionCard
+          icon="user-check"
+          label="Kullanıcı Onayları"
+          sub="Bekleyen kayıtlar"
+          badge={pendingCount > 0 ? pendingCount : undefined}
+          badgeColor="#f59e0b"
+          onPress={() => router.push("/(admin)/users")}
+          accent="#f59e0b"
+        />
+        <ActionCard
+          icon="credit-card"
+          label="Aidat Takibi"
+          sub={`${sitePayments.length} kayıt`}
+          onPress={() => router.push("/(admin)/payments")}
+        />
+        <ActionCard
+          icon="trending-up"
+          label="Gelir / Gider"
+          value={`₺${paidAmount.toLocaleString("tr-TR")}`}
+          sub={`₺${pendingAmount.toLocaleString("tr-TR")} bekliyor`}
+          onPress={() => router.push("/(admin)/payments")}
+          accent="#10b981"
+        />
+        <ActionCard
+          icon="bell"
+          label="Bildirim Gönder"
+          sub="Tüm site / rol bazlı"
+          badge={unreadCount > 0 ? unreadCount : undefined}
+          onPress={() => router.push("/(admin)/notifications")}
+        />
+        <ActionCard
+          icon="shopping-bag"
+          label="Esnaf Çağır"
+          sub="Hizmet talebi oluştur"
+          onPress={() => router.push("/(admin)/notifications")}
+          accent="#8b5cf6"
+        />
+        <ActionCard
+          icon="bar-chart-2"
+          label="Site İstatistikleri"
+          sub={`${activeResidents} aktif sakin`}
+          onPress={() => router.push("/(admin)/users")}
+          accent="#3b82f6"
+        />
       </View>
 
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Son Üyeler</Text>
-      <View style={[styles.card, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
-        {siteUsers.filter((u) => u.role !== "admin").slice(-5).reverse().map((u, i, arr) => (
+      <View style={[styles.listCard, { backgroundColor: colors.card, borderRadius: 14, borderColor: colors.border }]}>
+        {siteUsers.filter((u) => u.role !== "admin").slice(0, 5).reverse().map((u, i, arr) => (
           <View key={u.id} style={[styles.userRow, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
             <View style={[styles.avatar, { backgroundColor: colors.primaryLight, borderRadius: 20 }]}>
               <Text style={[styles.avatarText, { color: colors.primary }]}>{u.name[0]?.toUpperCase()}</Text>
@@ -118,10 +193,7 @@ export default function AdminDashboard() {
             </View>
             <View style={[
               styles.statusBadge,
-              {
-                backgroundColor: u.status === "active" ? "#dcfce7" : u.status === "pending" ? "#fef3c7" : "#fee2e2",
-                borderRadius: 20,
-              },
+              { backgroundColor: u.status === "active" ? "#dcfce7" : u.status === "pending" ? "#fef3c7" : "#fee2e2", borderRadius: 20 },
             ]}>
               <Text style={[
                 styles.statusText,
@@ -134,7 +206,7 @@ export default function AdminDashboard() {
         ))}
         {siteUsers.filter((u) => u.role !== "admin").length === 0 && (
           <View style={styles.empty}>
-            <Feather name="users" size={32} color={colors.mutedForeground} />
+            <Feather name="users" size={28} color={colors.mutedForeground} />
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Henüz üye yok</Text>
           </View>
         )}
@@ -145,38 +217,33 @@ export default function AdminDashboard() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  scroll: { paddingHorizontal: 16, gap: 16 },
-  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   greeting: { fontSize: 13, fontFamily: "Inter_400Regular" },
-  name: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  name: { fontSize: 24, fontFamily: "Inter_700Bold" },
   alertBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12 },
-  alertText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  statCard: {
-    width: "31%",
-    flexGrow: 1,
-    padding: 14,
-    gap: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+  alertText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  card: {
+    width: "47%", flexGrow: 1, padding: 16, gap: 6, borderWidth: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+    position: "relative",
   },
-  statIcon: { padding: 8 },
-  statValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  statLabel: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center" },
-  sectionTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
-  card: { borderWidth: 1, overflow: "hidden" },
+  cardIcon: { padding: 10, alignSelf: "flex-start" },
+  badge: { position: "absolute", top: 12, right: 12, minWidth: 22, height: 22, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  badgeText: { fontSize: 11, fontFamily: "Inter_700Bold", color: "#fff" },
+  cardValue: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  cardLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  cardSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  cardChevron: { alignSelf: "flex-end", marginTop: 2 },
+  listCard: { borderWidth: 1, overflow: "hidden" },
   userRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  avatar: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  avatar: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  avatarText: { fontSize: 15, fontFamily: "Inter_700Bold" },
   userName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   userMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4 },
   statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
-  empty: { padding: 32, alignItems: "center", gap: 8 },
+  empty: { padding: 28, alignItems: "center", gap: 8 },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
 });

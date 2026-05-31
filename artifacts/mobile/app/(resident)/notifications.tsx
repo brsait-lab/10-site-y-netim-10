@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import { useAuth, User } from "@/context/AuthContext";
 import { useData, AppNotification, NotificationType } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
@@ -68,8 +69,9 @@ function NotifItem({ notif, onRead }: { notif: AppNotification; onRead: (id: str
 
 type TargetMode = "admin" | "security" | "daire";
 
-const NOTIF_TYPES: { key: NotificationType; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { key: "noise", label: "Gürültü Şikayeti", icon: "volume-2" },
+const NOTIF_TYPES: { key: NotificationType; label: string; icon: keyof typeof Feather.glyphMap; hint?: string }[] = [
+  { key: "noise", label: "Gürültü Şikayeti", icon: "volume-2", hint: "Komşu gürültüsü bildirin" },
+  { key: "cargo", label: "Kargo Talebi", icon: "package", hint: "Güvenliğe kargo bildirin" },
   { key: "general", label: "Genel Bildirim", icon: "bell" },
 ];
 
@@ -78,9 +80,9 @@ export default function ResidentNotificationsScreen() {
   const insets = useSafeAreaInsets();
   const { user, getSiteUsers } = useAuth();
   const { getMyNotifications, markNotificationRead, sendNotification } = useData();
-  const [activeTab, setActiveTab] = useState<"inbox" | "send">("inbox");
+  const params = useLocalSearchParams<{ action?: string }>();
 
-  // send form
+  const [activeTab, setActiveTab] = useState<"inbox" | "send">("inbox");
   const [notifType, setNotifType] = useState<NotificationType>("noise");
   const [targetMode, setTargetMode] = useState<TargetMode>("admin");
   const [title, setTitle] = useState("");
@@ -88,11 +90,22 @@ export default function ResidentNotificationsScreen() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
-  // daire picker
   const [residents, setResidents] = useState<User[]>([]);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
+
+  useEffect(() => {
+    if (params.action === "cargo") {
+      setActiveTab("send");
+      setNotifType("cargo");
+      setTargetMode("security");
+    } else if (params.action === "noise") {
+      setActiveTab("send");
+      setNotifType("noise");
+      setTargetMode("admin");
+    }
+  }, [params.action]);
 
   const loadResidents = useCallback(async () => {
     if (!user) return;
@@ -148,6 +161,7 @@ export default function ResidentNotificationsScreen() {
   };
 
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const currentTypeInfo = NOTIF_TYPES.find((t) => t.key === notifType);
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: colors.background }}>
@@ -185,7 +199,6 @@ export default function ResidentNotificationsScreen() {
       ) : (
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-          {/* Info banner - no broadcast for residents */}
           <View style={[styles.infoBanner, { backgroundColor: "#eff6ff", borderRadius: colors.radius, borderColor: "#bfdbfe" }]}>
             <Feather name="info" size={14} color="#1d4ed8" />
             <Text style={[styles.infoText, { color: "#1e40af" }]}>
@@ -193,7 +206,6 @@ export default function ResidentNotificationsScreen() {
             </Text>
           </View>
 
-          {/* Target mode */}
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>KİME GÖNDERİLSİN?</Text>
           <View style={styles.targetRow}>
             {([
@@ -219,7 +231,6 @@ export default function ResidentNotificationsScreen() {
             ))}
           </View>
 
-          {/* Daire picker */}
           {targetMode === "daire" && (
             <View style={styles.pickerSection}>
               <Pressable
@@ -266,7 +277,6 @@ export default function ResidentNotificationsScreen() {
             </View>
           )}
 
-          {/* Notification type */}
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>BİLDİRİM TÜRÜ</Text>
           <View style={styles.typeRow}>
             {NOTIF_TYPES.map((t) => (
@@ -288,7 +298,13 @@ export default function ResidentNotificationsScreen() {
             ))}
           </View>
 
-          {/* Message */}
+          {currentTypeInfo?.hint && (
+            <View style={[styles.hintBanner, { backgroundColor: colors.primaryLight, borderRadius: 8 }]}>
+              <Feather name="info" size={13} color={colors.primary} />
+              <Text style={[styles.hintText, { color: colors.primary }]}>{currentTypeInfo.hint}</Text>
+            </View>
+          )}
+
           <View style={[styles.inputBox, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
             <TextInput
               style={[styles.inputTitle, { color: colors.foreground, borderBottomColor: colors.border }]}
@@ -363,9 +379,11 @@ const styles = StyleSheet.create({
   dropdownItem: { flexDirection: "row", alignItems: "center", padding: 12, borderBottomWidth: 1 },
   dropdownItemName: { fontSize: 14, fontFamily: "Inter_500Medium" },
   dropdownItemSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  typeRow: { flexDirection: "row", gap: 10 },
-  typeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, borderWidth: 1.5 },
+  typeRow: { flexDirection: "column", gap: 8 },
+  typeBtn: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1.5 },
   typeBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  hintBanner: { flexDirection: "row", alignItems: "center", gap: 7, padding: 10 },
+  hintText: { fontSize: 12, fontFamily: "Inter_400Regular" },
   inputBox: { borderWidth: 1, overflow: "hidden" },
   inputTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold", padding: 14, borderBottomWidth: 1 },
   inputMessage: { fontSize: 14, fontFamily: "Inter_400Regular", padding: 14, minHeight: 100 },
