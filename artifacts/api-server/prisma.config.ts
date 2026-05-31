@@ -11,6 +11,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
+    url: connectionString,
     adapter: () => new PrismaPg(new Pool({ connectionString })),
   },
 });
