@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Site {
+  id        String   @id @default(uuid())
+  name      String
+  address   String   @default("")
+  adminId   String   @default("") @map("admin_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sites")
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  name                String
+  email               String   @unique
+  passwordHash        String   @map("password_hash")
+  role                String
+  siteId              String   @map("site_id")
+  status              String   @default("pending")
+  phone               String   @default("")
+  unitNo              String?  @map("unit_no")
+  plates              String[]
+  businessName        String?  @map("business_name")
+  businessCategory    String?  @map("business_category")
+  businessDescription String?  @map("business_description")
+  businessAddress     String?  @map("business_address")
+  latitude            Float?
+  longitude           Float?
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  type       String
+  title      String
+  message    String
+  fromUserId String   @map("from_user_id")
+  fromName   String   @map("from_name")
+  toRoles    String[] @map("to_roles")
+  toUserIds  String[] @map("to_user_ids")
+  siteId     String   @map("site_id")
+  readBy     String[] @map("read_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  siteId      String   @map("site_id")
+  title       String
+  amount      Float
+  dueDate     String   @map("due_date")
+  type        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("payments")
+}
+
+model UserPayment {
+  id        String    @id @default(uuid())
+  paymentId String    @map("payment_id")
+  userId    String    @map("user_id")
+  siteId    String    @map("site_id")
+  status    String    @default("pending")
+  paidAt    DateTime? @map("paid_at")
+
+  @@map("user_payments")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  chatId    String   @map("chat_id")
+  fromId    String   @map("from_id")
+  fromName  String   @map("from_name")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("messages")
+}
+
+model Package {
+  id              String    @id @default(uuid())
+  siteId          String    @map("site_id")
+  recipientUserId String    @map("recipient_user_id")
+  recipientName   String    @map("recipient_name")
+  senderInfo      String    @map("sender_info")
+  description     String
+  status          String    @default("received")
+  receivedAt      DateTime  @default(now()) @map("received_at")
+  deliveredAt     DateTime? @map("delivered_at")
+
+  @@map("packages")
+}

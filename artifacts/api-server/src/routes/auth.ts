@@ -1,18 +1,16 @@
-import { Router } from "express";
-import { eq } from "drizzle-orm";
-import { db, usersTable, sitesTable } from "@workspace/db";
+import { Router, Request, Response } from "express";
+import { prisma } from "../lib/prisma.js";
 import {
   signToken,
   hashPassword,
   comparePassword,
-  generateId,
 } from "../lib/auth.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
-import { Request, Response } from "express";
+import type { User } from "@prisma/client";
 
 const router = Router();
 
-function toUserDto(u: typeof usersTable.$inferSelect) {
+export function toUserDto(u: User) {
   return {
     id: u.id,
     name: u.name,
@@ -44,10 +42,9 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     return;
   }
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()));
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+  });
 
   if (!user || user.role !== role) {
     res.status(401).json({ message: "E-posta, şifre veya rol hatalı." });
@@ -61,46 +58,26 @@ router.post("/auth/login", async (req: Request, res: Response) => {
   }
 
   if (user.status === "pending") {
-    res
-      .status(401)
-      .json({ message: "Hesabınız henüz onaylanmadı. Yönetici onayı bekleniyor." });
+    res.status(401).json({ message: "Hesabınız henüz onaylanmadı. Yönetici onayı bekleniyor." });
     return;
   }
   if (user.status === "rejected") {
-    res
-      .status(401)
-      .json({ message: "Hesabınız reddedildi. Lütfen yöneticinizle iletişime geçin." });
+    res.status(401).json({ message: "Hesabınız reddedildi. Lütfen yöneticinizle iletişime geçin." });
     return;
   }
 
-  const token = signToken({
-    userId: user.id,
-    role: user.role,
-    siteId: user.siteId,
-    email: user.email,
-  });
-
+  const token = signToken({ userId: user.id, role: user.role, siteId: user.siteId, email: user.email });
   res.json({ user: toUserDto(user), token });
 });
 
 router.post("/auth/register", async (req: Request, res: Response) => {
   const data = req.body as {
-    name: string;
-    email: string;
-    password: string;
-    role: string;
-    phone: string;
-    siteId?: string;
-    siteName?: string;
-    siteAddress?: string;
-    unitNo?: string;
-    plates?: string[];
-    businessName?: string;
-    businessCategory?: string;
-    businessDescription?: string;
-    businessAddress?: string;
-    latitude?: number;
-    longitude?: number;
+    name: string; email: string; password: string; role: string; phone: string;
+    siteId?: string; siteName?: string; siteAddress?: string;
+    unitNo?: string; plates?: string[];
+    businessName?: string; businessCategory?: string;
+    businessDescription?: string; businessAddress?: string;
+    latitude?: number; longitude?: number;
   };
 
   const { name, email, password, role, phone } = data;
@@ -109,147 +86,69 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     return;
   }
 
-  const [existing] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()));
-
+  const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (existing) {
     res.json({ success: false, message: "Bu e-posta adresi zaten kayıtlı." });
     return;
   }
 
   const passwordHash = await hashPassword(password);
-  let siteId = data.siteId ?? "";
-  let autoLogin = false;
 
   if (role === "admin") {
     if (!data.siteName) {
       res.json({ success: false, message: "Site adı gereklidir." });
       return;
     }
-    const [siteExists] = await db
-      .select({ id: sitesTable.id })
-      .from(sitesTable)
-      .where(eq(sitesTable.name, data.siteName));
-
+    const siteExists = await prisma.site.findFirst({ where: { name: data.siteName } });
     if (siteExists) {
       res.json({ success: false, message: "Bu site adı zaten mevcut." });
       return;
     }
 
-    const newSiteId = generateId();
-    const userId = generateId();
-
-    await db.insert(sitesTable).values({
-      id: newSiteId,
-      name: data.siteName,
-      address: data.siteAddress ?? "",
-      adminId: userId,
+    const site = await prisma.site.create({
+      data: { name: data.siteName, address: data.siteAddress ?? "", adminId: "" },
     });
-
-    await db.insert(usersTable).values({
-      id: userId,
-      name,
-      email: email.toLowerCase(),
-      passwordHash,
-      role: "admin",
-      siteId: newSiteId,
-      status: "active",
-      phone,
+    const user = await prisma.user.create({
+      data: { name, email: email.toLowerCase(), passwordHash, role: "admin", siteId: site.id, status: "active", phone },
     });
+    await prisma.site.update({ where: { id: site.id }, data: { adminId: user.id } });
 
-    const [newUser] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, userId));
-
-    const token = signToken({
-      userId,
-      role: "admin",
-      siteId: newSiteId,
-      email: email.toLowerCase(),
-    });
-
-    res.json({
-      success: true,
-      message: "Hesap oluşturuldu.",
-      user: toUserDto(newUser!),
-      token,
-    });
+    const token = signToken({ userId: user.id, role: "admin", siteId: site.id, email: user.email });
+    res.json({ success: true, message: "Hesap oluşturuldu.", user: toUserDto(user), token });
     return;
   }
 
-  if (role !== "merchant" && !siteId) {
+  if (role !== "merchant" && !data.siteId) {
     res.json({ success: false, message: "Lütfen bir site seçin." });
     return;
   }
 
-  const status =
-    role === "security" || role === "merchant" ? "active" : "pending";
-  autoLogin = status === "active";
-
-  const userId = generateId();
-  await db.insert(usersTable).values({
-    id: userId,
-    name,
-    email: email.toLowerCase(),
-    passwordHash,
-    role,
-    siteId: siteId || "global",
-    status,
-    phone,
-    unitNo: data.unitNo,
-    plates: data.plates,
-    businessName: data.businessName,
-    businessCategory: data.businessCategory,
-    businessDescription: data.businessDescription,
-    businessAddress: data.businessAddress,
-    latitude: data.latitude,
-    longitude: data.longitude,
+  const status = role === "security" || role === "merchant" ? "active" : "pending";
+  const user = await prisma.user.create({
+    data: {
+      name, email: email.toLowerCase(), passwordHash, role,
+      siteId: data.siteId || "global", status, phone,
+      unitNo: data.unitNo, plates: data.plates ?? [],
+      businessName: data.businessName, businessCategory: data.businessCategory,
+      businessDescription: data.businessDescription, businessAddress: data.businessAddress,
+      latitude: data.latitude, longitude: data.longitude,
+    },
   });
 
-  if (autoLogin) {
-    const [newUser] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, userId));
-
-    const token = signToken({
-      userId,
-      role,
-      siteId: siteId || "global",
-      email: email.toLowerCase(),
-    });
-
-    res.json({
-      success: true,
-      message: "Kayıt başarılı.",
-      user: toUserDto(newUser!),
-      token,
-    });
+  if (status === "active") {
+    const token = signToken({ userId: user.id, role, siteId: user.siteId, email: user.email });
+    res.json({ success: true, message: "Kayıt başarılı.", user: toUserDto(user), token });
     return;
   }
 
-  res.json({
-    success: true,
-    message: "Kayıt talebiniz alındı. Yönetici onayı bekleniyor.",
-  });
+  res.json({ success: true, message: "Kayıt talebiniz alındı. Yönetici onayı bekleniyor." });
 });
 
 router.get("/auth/me", requireAuth, async (req: Request, res: Response) => {
   const { userId } = (req as AuthRequest).authUser;
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, userId));
-
-  if (!user) {
-    res.status(404).json({ message: "Kullanıcı bulunamadı." });
-    return;
-  }
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) { res.status(404).json({ message: "Kullanıcı bulunamadı." }); return; }
   res.json(toUserDto(user));
 });
 
-export { toUserDto };
 export default router;
