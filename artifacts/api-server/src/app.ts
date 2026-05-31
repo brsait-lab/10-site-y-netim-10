@@ -1,11 +1,23 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
+import { rateLimit } from "express-rate-limit";
 import pinoHttp from "pino-http";
-import router from "./routes";
-import { logger } from "./lib/logger";
+import router from "./routes/index.js";
+import { logger } from "./lib/logger.js";
 
 const app: Express = express();
 
+app.use(helmet());
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Çok fazla istek. Lütfen bekleyin." },
+  }),
+);
 app.use(
   pinoHttp({
     logger,
