@@ -1,10 +1,12 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
+import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
-router.get("/payments", requireAuth, async (req: Request, res: Response) => {
+// Vendors cannot see payment/dues data
+router.get("/payments", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
   const rows = await prisma.payment.findMany({ where: { siteId } });
   res.json(rows.map((p) => ({
@@ -14,7 +16,7 @@ router.get("/payments", requireAuth, async (req: Request, res: Response) => {
   })));
 });
 
-router.post("/payments", requireAuth, async (req: Request, res: Response) => {
+router.post("/payments", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
   const body = req.body as {
     siteId: string; title: string; amount: number;
     dueDate: string; type: string; description?: string;
@@ -42,7 +44,8 @@ router.post("/payments", requireAuth, async (req: Request, res: Response) => {
   });
 });
 
-router.get("/user-payments", requireAuth, async (req: Request, res: Response) => {
+// Vendors cannot see user payment/dues records
+router.get("/user-payments", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, siteId, role } = (req as AuthRequest).authUser;
   const rows = role === "resident"
     ? await prisma.userPayment.findMany({ where: { userId } })
@@ -55,7 +58,7 @@ router.get("/user-payments", requireAuth, async (req: Request, res: Response) =>
   })));
 });
 
-router.patch("/user-payments/:id/pay", requireAuth, async (req: Request, res: Response) => {
+router.patch("/user-payments/:id/pay", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   try {
     const updated = await prisma.userPayment.update({

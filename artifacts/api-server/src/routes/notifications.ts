@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
+import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -15,13 +16,15 @@ function toDto(n: Awaited<ReturnType<typeof prisma.notification.findFirst>>) {
   };
 }
 
-router.get("/notifications", requireAuth, async (req: Request, res: Response) => {
+// Vendors cannot receive or send general notifications
+router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
   const rows = await prisma.notification.findMany({ where: { siteId }, orderBy: { createdAt: "desc" } });
   res.json(rows.map((n) => toDto(n)));
 });
 
-router.post("/notifications", requireAuth, async (req: Request, res: Response) => {
+// Vendors cannot send notifications
+router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, role, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
     type: string; title: string; message: string;
@@ -29,6 +32,7 @@ router.post("/notifications", requireAuth, async (req: Request, res: Response) =
     toRoles?: string[]; toUserIds?: string[]; siteId: string;
   };
 
+  // Residents can only send noise notifications, and only once per day to the same target user
   if (role === "resident" && body.type === "noise") {
     const targetUserId = body.toUserIds?.[0];
     if (targetUserId) {
@@ -60,7 +64,7 @@ router.post("/notifications", requireAuth, async (req: Request, res: Response) =
   res.status(201).json(toDto(row));
 });
 
-router.patch("/notifications/:id/read", requireAuth, async (req: Request, res: Response) => {
+router.patch("/notifications/:id/read", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId } = (req as AuthRequest).authUser;
 

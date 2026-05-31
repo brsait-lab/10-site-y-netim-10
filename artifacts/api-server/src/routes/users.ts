@@ -1,11 +1,13 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
+import { blockRoles } from "../middlewares/requireRole.js";
 import { toUserDto } from "./auth.js";
 
 const router = Router();
 
-router.get("/users", requireAuth, async (req: Request, res: Response) => {
+// Vendors cannot access the user list (contains phone, email, sensitive info)
+router.get("/users", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const querySiteId = (req.query["siteId"] as string | undefined) ?? tokenSiteId;
 
@@ -15,6 +17,14 @@ router.get("/users", requireAuth, async (req: Request, res: Response) => {
 
 router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
+  const { userId, role } = (req as AuthRequest).authUser;
+
+  // Vendors can only update their own profile
+  if (role === "merchant" && id !== userId) {
+    res.status(403).json({ message: "Yalnızca kendi profilinizi güncelleyebilirsiniz." });
+    return;
+  }
+
   const updates = req.body as {
     name?: string; phone?: string; unitNo?: string; plates?: string[];
     businessName?: string; businessCategory?: string;
@@ -30,7 +40,7 @@ router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/users/:id/approve", requireAuth, async (req: Request, res: Response) => {
+router.patch("/users/:id/approve", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   try {
     const updated = await prisma.user.update({ where: { id }, data: { status: "active" } });
@@ -40,7 +50,7 @@ router.patch("/users/:id/approve", requireAuth, async (req: Request, res: Respon
   }
 });
 
-router.patch("/users/:id/reject", requireAuth, async (req: Request, res: Response) => {
+router.patch("/users/:id/reject", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   try {
     const updated = await prisma.user.update({ where: { id }, data: { status: "rejected" } });

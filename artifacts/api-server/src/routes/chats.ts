@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
+import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -18,6 +19,7 @@ function chatToDto(c: Awaited<ReturnType<typeof prisma.chat.findFirst>>) {
   };
 }
 
+// All roles can list their own chats (vendors only see chats they were invited to)
 router.get("/chats", requireAuth, async (req: Request, res: Response) => {
   const { userId, siteId } = (req as AuthRequest).authUser;
 
@@ -60,7 +62,8 @@ router.get("/chats/:id/participants", requireAuth, async (req: Request, res: Res
   })));
 });
 
-router.post("/chats", requireAuth, async (req: Request, res: Response) => {
+// Vendors CANNOT create chats — only admin, resident, security can initiate
+router.post("/chats", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, siteId } = (req as AuthRequest).authUser;
   const body = req.body as { title: string; participantIds: string[] };
 
@@ -88,13 +91,20 @@ router.post("/chats", requireAuth, async (req: Request, res: Response) => {
   res.status(201).json(chatToDto(chat));
 });
 
+// Vendors cannot close chats either — only the creator / admin can
 router.patch("/chats/:id/close", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId } = (req as AuthRequest).authUser;
+  const { userId, role } = (req as AuthRequest).authUser;
 
   const chat = await prisma.chat.findUnique({ where: { id } });
   if (!chat) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
   if (chat.status === "closed") { res.status(400).json({ message: "Sohbet zaten kapalı." }); return; }
+
+  // Vendors can't close chats
+  if (role === "merchant") {
+    res.status(403).json({ message: "Sohbet kapatma yetkiniz yok." });
+    return;
+  }
 
   const updated = await prisma.chat.update({
     where: { id },
