@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -18,43 +19,50 @@ import { useData, Chat } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
 import { Button } from "@/components/ui/Button";
 
-function ChatRow({ chat, onPress, onClose }: { chat: Chat; onPress: () => void; onClose?: () => void }) {
+type Tab = "active" | "closed" | "archive";
+
+function getArchiveKey(userId: string) { return `chat_archive_${userId}`; }
+async function loadArchive(userId: string): Promise<string[]> {
+  try { const raw = await AsyncStorage.getItem(getArchiveKey(userId)); return raw ? JSON.parse(raw) : []; }
+  catch { return []; }
+}
+async function saveArchive(userId: string, ids: string[]) {
+  try { await AsyncStorage.setItem(getArchiveKey(userId), JSON.stringify(ids)); } catch {}
+}
+
+function ChatRow({ chat, onPress, onArchive, onClose }: { chat: Chat; onPress: () => void; onArchive?: () => void; onClose?: () => void }) {
   const colors = useColors();
   const isOpen = chat.status === "open";
 
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chatRow,
-        { backgroundColor: pressed ? colors.muted : colors.card, borderColor: colors.border, borderRadius: 14 },
-      ]}
-    >
+    <Pressable onPress={onPress} style={({ pressed }) => [
+      styles.chatRow,
+      { backgroundColor: pressed ? colors.muted : colors.card, borderColor: colors.border, borderRadius: 14, borderLeftColor: isOpen ? colors.primary : colors.mutedForeground, borderLeftWidth: 3 },
+    ]}>
       <View style={[styles.chatAvatar, { backgroundColor: isOpen ? colors.primaryLight : colors.muted, borderRadius: 22 }]}>
         <Feather name="message-circle" size={20} color={isOpen ? colors.primary : colors.mutedForeground} />
       </View>
       <View style={{ flex: 1 }}>
-        <View style={styles.chatRowTop}>
-          <Text style={[styles.chatTitle, { color: colors.foreground }]} numberOfLines={1}>{chat.title}</Text>
-          <View style={[styles.statusPill, { backgroundColor: isOpen ? "#dcfce7" : colors.muted, borderRadius: 10 }]}>
-            <Text style={[styles.statusText, { color: isOpen ? colors.primary : colors.mutedForeground }]}>
-              {isOpen ? "Açık" : "Kapalı"}
-            </Text>
-          </View>
-        </View>
+        <Text style={[styles.chatTitle, { color: colors.foreground }]} numberOfLines={1}>{chat.title}</Text>
         <Text style={[styles.chatDate, { color: colors.mutedForeground }]}>
-          {new Date(chat.createdAt).toLocaleDateString("tr-TR")}
+          {new Date(chat.createdAt).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" })}
         </Text>
       </View>
-      {isOpen && onClose && (
-        <Pressable
-          onPress={(e) => { e.stopPropagation(); onClose(); }}
-          style={[styles.closeAction, { backgroundColor: "#fef2f2", borderRadius: 8 }]}
-        >
-          <Feather name="x-circle" size={16} color="#ef4444" />
-        </Pressable>
-      )}
-      <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+      <View style={styles.actionRow}>
+        {onClose && isOpen && (
+          <Pressable onPress={(e) => { e.stopPropagation(); onClose(); }}
+            style={[styles.actionBtn, { backgroundColor: "#fef2f2", borderRadius: 8 }]}>
+            <Feather name="x-circle" size={15} color="#ef4444" />
+          </Pressable>
+        )}
+        {onArchive && (
+          <Pressable onPress={(e) => { e.stopPropagation(); onArchive(); }}
+            style={[styles.actionBtn, { backgroundColor: colors.muted, borderRadius: 8 }]}>
+            <Feather name="archive" size={15} color={colors.mutedForeground} />
+          </Pressable>
+        )}
+        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+      </View>
     </Pressable>
   );
 }
@@ -64,21 +72,47 @@ export default function SecurityChatsScreen() {
   const insets = useSafeAreaInsets();
   const { user, getSiteUsers } = useAuth();
   const { chats, openChat, closeMyChat } = useData();
+  const [tab, setTab] = useState<Tab>("active");
+  const [archiveIds, setArchiveIds] = useState<string[]>([]);
+  const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [chatTitle, setChatTitle] = useState("");
   const [residents, setResidents] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState("");
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<"open" | "closed">("open");
-  const [search, setSearch] = useState("");
 
-  const siteChats = chats
-    .filter((c) => c.siteId === user?.siteId)
+  const userId = user?.id ?? "";
+
+  const refreshArchive = useCallback(async () => {
+    const ids = await loadArchive(userId);
+    setArchiveIds(ids);
+  }, [userId]);
+
+  useEffect(() => { refreshArchive(); }, [refreshArchive]);
+
+  const archiveChat = async (chatId: string) => {
+    const ids = [...archiveIds, chatId];
+    setArchiveIds(ids);
+    await saveArchive(userId, ids);
+  };
+
+  const unarchiveChat = async (chatId: string) => {
+    const ids = archiveIds.filter((id) => id !== chatId);
+    setArchiveIds(ids);
+    await saveArchive(userId, ids);
+  };
+
+  const siteChats = chats.filter((c) => c.siteId === user?.siteId)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const filtered = siteChats.filter((c) =>
-    (tab === "open" ? c.status === "open" : c.status !== "open") &&
-    (!search || c.title.toLowerCase().includes(search.toLowerCase()))
-  );
+
+  const activeChats = siteChats.filter((c) => c.status === "open" && !archiveIds.includes(c.id));
+  const closedChats = siteChats.filter((c) => c.status !== "open" && !archiveIds.includes(c.id));
+  const archivedChats = siteChats.filter((c) => archiveIds.includes(c.id));
+
+  const applySearch = (list: Chat[]) =>
+    !search ? list : list.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()));
+
+  const currentChats = applySearch(tab === "active" ? activeChats : tab === "closed" ? closedChats : archivedChats);
 
   const loadResidents = async () => {
     if (!user) return;
@@ -86,10 +120,7 @@ export default function SecurityChatsScreen() {
     setResidents(users.filter((u) => u.role === "resident" && u.status === "active"));
   };
 
-  const handleOpenModal = async () => {
-    await loadResidents();
-    setShowModal(true);
-  };
+  const handleOpenModal = async () => { await loadResidents(); setShowModal(true); };
 
   const handleCreate = async () => {
     if (!chatTitle.trim() || !user) return;
@@ -97,76 +128,77 @@ export default function SecurityChatsScreen() {
     try {
       const participantIds = [user.id, ...(selectedUser ? [selectedUser] : [])];
       const chat = await openChat(chatTitle.trim(), participantIds);
-      setLoading(false);
-      setShowModal(false);
-      setChatTitle("");
-      setSelectedUser("");
+      setLoading(false); setShowModal(false); setChatTitle(""); setSelectedUser("");
       router.push({ pathname: "/chat/[id]", params: { id: chat.id, name: chat.title } });
-    } catch {
-      setLoading(false);
-    }
+    } catch { setLoading(false); }
   };
 
-  const handleCloseChat = async (chatId: string) => {
-    await closeMyChat(chatId);
-  };
+  const TABS: { key: Tab; label: string; count: number }[] = [
+    { key: "active",  label: "Aktif",  count: activeChats.length },
+    { key: "closed",  label: "Kapalı", count: closedChats.length },
+    { key: "archive", label: "Arşiv",  count: archivedChats.length },
+  ];
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.headerWrap, { paddingTop: topPad + 16, backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: topPad + 16 }]}>
         <View style={styles.headerTop}>
           <Text style={[styles.title, { color: colors.foreground }]}>Sohbetler</Text>
-          <Pressable
-            onPress={handleOpenModal}
-            style={[styles.newBtn, { backgroundColor: colors.primary, borderRadius: 20 }]}
-          >
+          <Pressable onPress={handleOpenModal}
+            style={[styles.newBtn, { backgroundColor: colors.primary, borderRadius: 20 }]}>
             <Feather name="plus" size={16} color="#fff" />
             <Text style={styles.newBtnText}>Yeni</Text>
           </Pressable>
         </View>
-        <View style={[styles.segmented, { backgroundColor: colors.muted, borderRadius: 10 }]}>
-          {([["open", "Açık"], ["closed", "Kapalı"]] as [typeof tab, string][]).map(([key, label]) => (
-            <Pressable
-              key={key}
-              onPress={() => setTab(key)}
-              style={[styles.segBtn, { borderRadius: 8, backgroundColor: tab === key ? colors.card : "transparent" }]}
-            >
-              <Text style={[styles.segBtnText, { color: tab === key ? colors.foreground : colors.mutedForeground }]}>{label}</Text>
+
+        <View style={[styles.tabRow, { borderColor: colors.border }]}>
+          {TABS.map((t) => (
+            <Pressable key={t.key} onPress={() => setTab(t.key)}
+              style={[styles.tabBtn, tab === t.key && { borderBottomWidth: 2, borderBottomColor: colors.primary }]}>
+              <Text style={[styles.tabLabel, { color: tab === t.key ? colors.primary : colors.mutedForeground }]}>{t.label}</Text>
+              {t.count > 0 && (
+                <View style={[styles.tabBadge, { backgroundColor: tab === t.key ? colors.primary : colors.muted, borderRadius: 10 }]}>
+                  <Text style={[styles.tabBadgeText, { color: tab === t.key ? "#fff" : colors.mutedForeground }]}>{t.count}</Text>
+                </View>
+              )}
             </Pressable>
           ))}
         </View>
+
         <View style={[styles.searchBox, { borderColor: colors.border, backgroundColor: colors.card, borderRadius: 10 }]}>
           <Feather name="search" size={16} color={colors.mutedForeground} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.foreground }]}
-            placeholder="Sohbet ara..."
-            placeholderTextColor={colors.mutedForeground}
-            value={search}
-            onChangeText={setSearch}
-          />
+          <TextInput style={[styles.searchInput, { color: colors.foreground }]} placeholder="Sohbet ara..."
+            placeholderTextColor={colors.mutedForeground} value={search} onChangeText={setSearch} />
+          {search ? <Pressable onPress={() => setSearch("")}><Feather name="x" size={14} color={colors.mutedForeground} /></Pressable> : null}
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {filtered.length === 0 ? (
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+        {currentChats.length === 0 ? (
           <View style={styles.empty}>
-            <Feather name="message-circle" size={44} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              {tab === "open" ? "Açık sohbet yok" : "Kapalı sohbet yok"}
+            <Feather name={tab === "archive" ? "archive" : "message-circle"} size={44} color={colors.mutedForeground} />
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              {tab === "active" ? "Aktif sohbet yok" : tab === "closed" ? "Kapalı sohbet yok" : "Arşiv boş"}
             </Text>
           </View>
-        ) : filtered.map((c) => (
-          <ChatRow
-            key={c.id}
-            chat={c}
-            onPress={() => router.push({ pathname: "/chat/[id]", params: { id: c.id, name: c.title } })}
-            onClose={c.status === "open" ? () => handleCloseChat(c.id) : undefined}
-          />
+        ) : currentChats.map((c) => (
+          <View key={c.id} style={{ gap: 6 }}>
+            <ChatRow
+              chat={c}
+              onPress={() => router.push({ pathname: "/chat/[id]", params: { id: c.id, name: c.title } })}
+              onArchive={tab !== "archive" ? () => archiveChat(c.id) : undefined}
+              onClose={tab === "active" ? () => closeMyChat(c.id) : undefined}
+            />
+            {tab === "archive" && (
+              <Pressable onPress={() => unarchiveChat(c.id)}
+                style={[styles.unarchiveBtn, { backgroundColor: colors.primaryLight, borderRadius: 10 }]}>
+                <Feather name="rotate-ccw" size={13} color={colors.primary} />
+                <Text style={[styles.unarchiveBtnText, { color: colors.primary }]}>Arşivden çıkar</Text>
+              </Pressable>
+            )}
+          </View>
         ))}
       </ScrollView>
 
@@ -175,37 +207,23 @@ export default function SecurityChatsScreen() {
           <View style={[styles.modal, { backgroundColor: colors.background, paddingBottom: insets.bottom + 20 }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>Yeni Sohbet</Text>
-              <Pressable onPress={() => setShowModal(false)} style={[styles.closeBtn, { backgroundColor: colors.muted, borderRadius: 20 }]}>
+              <Pressable onPress={() => setShowModal(false)}
+                style={[styles.closeBtn, { backgroundColor: colors.muted, borderRadius: 20 }]}>
                 <Feather name="x" size={18} color={colors.mutedForeground} />
               </Pressable>
             </View>
 
             <Text style={[styles.formLabel, { color: colors.mutedForeground }]}>KONU</Text>
-            <TextInput
-              style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, borderRadius: 12 }]}
-              placeholder="Sohbet konusu..."
-              placeholderTextColor={colors.mutedForeground}
-              value={chatTitle}
-              onChangeText={setChatTitle}
-              maxLength={60}
-            />
+            <TextInput style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card, borderRadius: 12 }]}
+              placeholder="Sohbet konusu..." placeholderTextColor={colors.mutedForeground}
+              value={chatTitle} onChangeText={setChatTitle} maxLength={60} />
 
             <Text style={[styles.formLabel, { color: colors.mutedForeground }]}>SAKİN (opsiyonel)</Text>
-            <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
               {residents.map((r) => (
-                <Pressable
-                  key={r.id}
-                  onPress={() => setSelectedUser(selectedUser === r.id ? "" : r.id)}
-                  style={[
-                    styles.residentRow,
-                    {
-                      borderColor: selectedUser === r.id ? colors.primary : colors.border,
-                      backgroundColor: selectedUser === r.id ? colors.primaryLight : colors.card,
-                      borderRadius: 10,
-                    },
-                  ]}
-                >
-                  <View style={[styles.resAvatar, { backgroundColor: colors.primaryLight, borderRadius: 16 }]}>
+                <Pressable key={r.id} onPress={() => setSelectedUser(selectedUser === r.id ? "" : r.id)}
+                  style={[styles.residentRow, { borderColor: selectedUser === r.id ? colors.primary : colors.border, backgroundColor: selectedUser === r.id ? colors.primaryLight : colors.card, borderRadius: 10 }]}>
+                  <View style={[styles.resAvatar, { backgroundColor: colors.primaryLight, borderRadius: 18 }]}>
                     <Text style={[styles.resAvatarText, { color: colors.primary }]}>{r.name[0]?.toUpperCase()}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
@@ -217,13 +235,7 @@ export default function SecurityChatsScreen() {
               ))}
             </ScrollView>
 
-            <Button
-              title="Sohbet Başlat"
-              onPress={handleCreate}
-              loading={loading}
-              disabled={!chatTitle.trim()}
-              fullWidth
-            />
+            <Button title="Sohbet Başlat" onPress={handleCreate} loading={loading} disabled={!chatTitle.trim()} fullWidth />
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -233,27 +245,29 @@ export default function SecurityChatsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  headerWrap: { paddingHorizontal: 16, paddingBottom: 8, gap: 10 },
+  header: { paddingHorizontal: 16, gap: 10, paddingBottom: 0, backgroundColor: "white" },
   headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   newBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8 },
   newBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
-  segmented: { flexDirection: "row", padding: 3 },
-  segBtn: { flex: 1, paddingVertical: 8, alignItems: "center" },
-  segBtnText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  tabRow: { flexDirection: "row", borderBottomWidth: 1 },
+  tabBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12 },
+  tabLabel: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  tabBadge: { paddingHorizontal: 7, paddingVertical: 2 },
+  tabBadgeText: { fontSize: 11, fontFamily: "Inter_700Bold" },
   searchBox: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
   searchInput: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
-  scroll: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
+  scroll: { paddingHorizontal: 16, paddingTop: 10, gap: 10 },
   chatRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderWidth: 1 },
   chatAvatar: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  chatRowTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  chatTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  statusPill: { paddingHorizontal: 8, paddingVertical: 3 },
-  statusText: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  chatTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   chatDate: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 3 },
-  closeAction: { padding: 7 },
+  actionRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  actionBtn: { padding: 7 },
+  unarchiveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 9, marginTop: -4 },
+  unarchiveBtnText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   empty: { paddingTop: 60, alignItems: "center", gap: 10 },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  emptyTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
   modal: { flex: 1, padding: 24, gap: 16 },
   modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold" },

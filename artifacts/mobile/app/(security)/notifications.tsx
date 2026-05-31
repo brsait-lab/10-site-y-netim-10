@@ -6,37 +6,55 @@ import { useAuth } from "@/context/AuthContext";
 import { useData, AppNotification } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
 
-const TYPE_INFO: Record<string, { label: string; color: string; icon: keyof typeof Feather.glyphMap }> = {
-  noise: { label: "Gürültü", color: "#ef4444", icon: "volume-2" },
-  cargo: { label: "Kargo", color: "#8b5cf6", icon: "package" },
-  package: { label: "Paket", color: "#8b5cf6", icon: "package" },
-  announcement: { label: "Duyuru", color: "#3b82f6", icon: "volume-2" },
-  payment: { label: "Ödeme", color: "#f59e0b", icon: "credit-card" },
-  general: { label: "Genel", color: "#64748b", icon: "bell" },
-  security: { label: "Güvenlik", color: "#ef4444", icon: "shield" },
+const TYPE_META: Record<string, { label: string; color: string; icon: keyof typeof Feather.glyphMap }> = {
+  noise:        { label: "Gürültü",      color: "#ef4444", icon: "volume-2" },
+  cargo:        { label: "Kargo",        color: "#8b5cf6", icon: "package" },
+  package:      { label: "Paket",        color: "#8b5cf6", icon: "package" },
+  announcement: { label: "Genel Duyuru",color: "#3b82f6", icon: "volume-2" },
+  payment:      { label: "Ödeme",        color: "#f59e0b", icon: "credit-card" },
+  general:      { label: "Genel",        color: "#64748b", icon: "bell" },
+  security:     { label: "Güvenlik",     color: "#ef4444", icon: "shield" },
 };
 
-function NotifItem({ notif, onRead, userId }: { notif: AppNotification; onRead: (id: string) => void; userId: string }) {
+function NotifCard({ n, onRead, userId }: { n: AppNotification; onRead: (id: string) => void; userId: string }) {
   const colors = useColors();
-  const isRead = notif.readBy.includes(userId);
-  const info = TYPE_INFO[notif.type] || TYPE_INFO.general;
+  const isRead = n.readBy.includes(userId);
+  const meta = TYPE_META[n.type] ?? TYPE_META.general;
 
   return (
     <Pressable
-      onPress={() => { if (!isRead) onRead(notif.id); }}
-      style={[styles.notifCard, { backgroundColor: isRead ? colors.card : colors.primaryLight + "50", borderRadius: colors.radius, borderColor: isRead ? colors.border : colors.primary + "40" }]}
+      onPress={() => { if (!isRead) onRead(n.id); }}
+      style={[
+        styles.card,
+        {
+          backgroundColor: isRead ? colors.card : "#f0fdf4",
+          borderColor: isRead ? colors.border : colors.primary + "40",
+          borderLeftColor: meta.color,
+          borderLeftWidth: 3,
+          borderRadius: 14,
+        },
+      ]}
     >
-      <View style={[styles.notifIcon, { backgroundColor: info.color + "20", borderRadius: 10 }]}>
-        <Feather name={info.icon} size={18} color={info.color} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={[styles.notifTitle, { color: colors.foreground }]}>{notif.title}</Text>
+      <View style={styles.cardTop}>
+        <View style={[styles.catPill, { backgroundColor: meta.color + "20", borderRadius: 20 }]}>
+          <Feather name={meta.icon} size={12} color={meta.color} />
+          <Text style={[styles.catText, { color: meta.color }]}>{meta.label}</Text>
+        </View>
+        <View style={styles.cardTopRight}>
+          <Text style={[styles.date, { color: colors.mutedForeground }]}>
+            {new Date(n.createdAt).toLocaleDateString("tr-TR", { day: "2-digit", month: "short" })}
+          </Text>
           {!isRead && <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />}
         </View>
-        <Text style={[styles.notifMsg, { color: colors.mutedForeground }]}>{notif.message}</Text>
-        <Text style={[styles.notifTime, { color: colors.mutedForeground }]}>{new Date(notif.createdAt).toLocaleDateString("tr-TR")} · {info.label}</Text>
       </View>
+      <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={1}>{n.title}</Text>
+      {n.fromName ? (
+        <View style={styles.senderRow}>
+          <Feather name="user" size={11} color={colors.mutedForeground} />
+          <Text style={[styles.senderText, { color: colors.mutedForeground }]}>{n.fromName}</Text>
+        </View>
+      ) : null}
+      <Text style={[styles.cardMsg, { color: colors.mutedForeground }]} numberOfLines={2}>{n.message}</Text>
     </Pressable>
   );
 }
@@ -47,23 +65,57 @@ export default function SecurityNotificationsScreen() {
   const { user } = useAuth();
   const { getMyNotifications, markNotificationRead, unreadCount } = useData();
   const notifs = getMyNotifications();
-  const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const userId = user?.id ?? "";
+  const unread = notifs.filter((n) => !n.readBy.includes(userId));
+  const read = notifs.filter((n) => n.readBy.includes(userId));
+
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPadding + 16, backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: topPad + 16 }]}>
         <View style={styles.titleRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Bildirimler</Text>
-          {unreadCount > 0 && <View style={[styles.badge, { backgroundColor: colors.primary, borderRadius: 10 }]}><Text style={styles.badgeText}>{unreadCount}</Text></View>}
+          {unreadCount > 0 && (
+            <View style={[styles.badge, { backgroundColor: colors.primary, borderRadius: 10 }]}>
+              <Text style={styles.badgeText}>{unreadCount}</Text>
+            </View>
+          )}
         </View>
       </View>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
         {notifs.length === 0 ? (
           <View style={styles.empty}>
-            <Feather name="bell" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Henüz bildirim yok</Text>
+            <Feather name="bell" size={44} color={colors.mutedForeground} />
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Bildirim yok</Text>
+            <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>Gelen bildirimler burada görünecek</Text>
           </View>
-        ) : notifs.map((n) => <NotifItem key={n.id} notif={n} onRead={markNotificationRead} userId={user?.id || ""} />)}
+        ) : (
+          <>
+            {unread.length > 0 && (
+              <>
+                <View style={styles.groupRow}>
+                  <View style={[styles.groupDot, { backgroundColor: colors.primary }]} />
+                  <Text style={[styles.groupLabel, { color: colors.primary }]}>OKUNMAMIŞ — {unread.length}</Text>
+                </View>
+                {unread.map((n) => <NotifCard key={n.id} n={n} onRead={markNotificationRead} userId={userId} />)}
+              </>
+            )}
+            {read.length > 0 && (
+              <>
+                <View style={styles.groupRow}>
+                  <View style={[styles.groupDot, { backgroundColor: colors.mutedForeground }]} />
+                  <Text style={[styles.groupLabel, { color: colors.mutedForeground }]}>OKUNMUŞ — {read.length}</Text>
+                </View>
+                {read.map((n) => <NotifCard key={n.id} n={n} onRead={markNotificationRead} userId={userId} />)}
+              </>
+            )}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -76,13 +128,22 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   badge: { paddingHorizontal: 8, paddingVertical: 3 },
   badgeText: { fontSize: 12, fontFamily: "Inter_700Bold", color: "#fff" },
-  scroll: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
-  notifCard: { flexDirection: "row", gap: 12, padding: 14, borderWidth: 1 },
-  notifIcon: { padding: 10, alignSelf: "flex-start" },
-  notifTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  scroll: { paddingHorizontal: 16, paddingTop: 8, gap: 10 },
+  groupRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 4 },
+  groupDot: { width: 6, height: 6, borderRadius: 3 },
+  groupLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 },
+  card: { padding: 14, gap: 6, borderWidth: 1 },
+  cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  catPill: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 4 },
+  catText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
+  cardTopRight: { flexDirection: "row", alignItems: "center", gap: 7 },
+  date: { fontSize: 11, fontFamily: "Inter_400Regular" },
   unreadDot: { width: 8, height: 8, borderRadius: 4 },
-  notifMsg: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 4 },
-  notifTime: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 6 },
-  empty: { paddingTop: 60, alignItems: "center", gap: 12 },
-  emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  cardTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  senderRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  senderText: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  cardMsg: { fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  empty: { paddingTop: 60, alignItems: "center", gap: 10 },
+  emptyTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
+  emptyDesc: { fontSize: 14, fontFamily: "Inter_400Regular" },
 });
