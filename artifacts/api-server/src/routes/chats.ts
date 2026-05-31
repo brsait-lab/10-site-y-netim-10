@@ -91,7 +91,7 @@ router.post("/chats", requireAuth, blockRoles("merchant"), async (req: Request, 
   res.status(201).json(chatToDto(chat));
 });
 
-// Vendors cannot close chats either — only the creator / admin can
+// Only the chat creator or an admin can close a chat
 router.patch("/chats/:id/close", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId, role } = (req as AuthRequest).authUser;
@@ -100,9 +100,10 @@ router.patch("/chats/:id/close", requireAuth, async (req: Request, res: Response
   if (!chat) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
   if (chat.status === "closed") { res.status(400).json({ message: "Sohbet zaten kapalı." }); return; }
 
-  // Vendors can't close chats
-  if (role === "merchant") {
-    res.status(403).json({ message: "Sohbet kapatma yetkiniz yok." });
+  const isCreator = chat.createdBy === userId;
+  const isAdmin = role === "admin";
+  if (!isCreator && !isAdmin) {
+    res.status(403).json({ message: "Sohbeti yalnızca oluşturan kişi veya yönetici kapatabilir." });
     return;
   }
 

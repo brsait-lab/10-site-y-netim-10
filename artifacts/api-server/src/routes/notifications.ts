@@ -32,24 +32,65 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
     toRoles?: string[]; toUserIds?: string[]; siteId: string;
   };
 
-  // Residents can only send noise notifications, and only once per day to the same target user
-  if (role === "resident" && body.type === "noise") {
-    const targetUserId = body.toUserIds?.[0];
-    if (targetUserId) {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      const count = await prisma.notification.count({
-        where: {
-          fromUserId: userId,
-          type: "noise",
-          toUserIds: { has: targetUserId },
-          createdAt: { gte: dayStart },
-        },
+  // ── Resident rules ──────────────────────────────────────────────────────────
+  if (role === "resident") {
+    const allowedTypes = ["noise", "package"];
+    if (!allowedTypes.includes(body.type)) {
+      res.status(403).json({
+        message: "Sakinler yalnızca gürültü veya kargo bildirimi gönderebilir.",
       });
-      if (count >= 1) {
-        res.status(429).json({ message: "Aynı kişiye bugün zaten gürültü bildirimi gönderdiniz." });
+      return;
+    }
+
+    // Noise: once per day per target user
+    if (body.type === "noise") {
+      const targetUserId = body.toUserIds?.[0];
+      if (targetUserId) {
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const count = await prisma.notification.count({
+          where: {
+            fromUserId: userId,
+            type: "noise",
+            toUserIds: { has: targetUserId },
+            createdAt: { gte: dayStart },
+          },
+        });
+        if (count >= 1) {
+          res.status(429).json({ message: "Aynı kişiye bugün zaten gürültü bildirimi gönderdiniz." });
+          return;
+        }
+      }
+    }
+
+    // Package: must target security role only
+    if (body.type === "package") {
+      const toRoles = body.toRoles ?? [];
+      const toUserIds = body.toUserIds ?? [];
+      const targetsSecurity =
+        toRoles.includes("security") ||
+        (toUserIds.length > 0 &&
+          (await prisma.user.count({
+            where: { id: { in: toUserIds }, role: { not: "security" }, siteId: tokenSiteId },
+          })) === 0);
+
+      if (!targetsSecurity || toRoles.some((r) => r !== "security")) {
+        res.status(403).json({
+          message: "Kargo bildirimi yalnızca güvenlik görevlilerine gönderilebilir.",
+        });
         return;
       }
+    }
+  }
+
+  // ── Security rules ──────────────────────────────────────────────────────────
+  // Security can notify residents (and admins), but not merchants
+  if (role === "security") {
+    const toRoles = body.toRoles ?? [];
+    const forbidden = toRoles.filter((r) => r === "merchant");
+    if (forbidden.length > 0) {
+      res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
+      return;
     }
   }
 
