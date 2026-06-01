@@ -9,15 +9,33 @@ export interface AuthUser {
   sessionVersion: number;
 }
 
-const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
+const IS_PRODUCTION = process.env["NODE_ENV"] === "production";
+
+/**
+ * JWT signing key.
+ * Uses JWT_SECRET exclusively — SESSION_SECRET is no longer a fallback.
+ * In development, falls back to a built-in key with a warning (startup validator
+ * also warns). In production, startup crashes if JWT_SECRET is unset.
+ */
+function getJwtSecret(): string {
+  const secret = process.env["JWT_SECRET"];
+  if (!secret) {
+    if (IS_PRODUCTION) {
+      throw new Error("[AUTH] JWT_SECRET is required in production.");
+    }
+    return "dev-jwt-secret-change-me-before-prod!!";
+  }
+  return secret;
+}
+
 const BCRYPT_ROUNDS = 10;
 
 export function signToken(payload: AuthUser): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "30d" });
 }
 
 export function verifyToken(token: string): AuthUser {
-  return jwt.verify(token, JWT_SECRET) as AuthUser;
+  return jwt.verify(token, getJwtSecret()) as AuthUser;
 }
 
 export function hashPassword(plain: string): Promise<string> {

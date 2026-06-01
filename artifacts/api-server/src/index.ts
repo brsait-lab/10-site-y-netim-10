@@ -1,16 +1,18 @@
-import { validateIbanSecretAtStartup } from "./lib/ibanCrypto.js";
+import { validateAllSecrets } from "./lib/secrets.js";
 import app from "./app";
 import { logger } from "./lib/logger";
 
-// ─── Secret validation (fail-fast in production) ──────────────────────────────
-validateIbanSecretAtStartup();
+// ─── Fail-fast secret validation ─────────────────────────────────────────────
+// Checks JWT_SECRET, SESSION_SECRET, IBAN_SECRET:
+//   • All present (required in production, warned in development)
+//   • All ≥ 32 characters
+//   • All DISTINCT from each other
+validateAllSecrets();
 
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
+  throw new Error("PORT environment variable is required but was not provided.");
 }
 
 const port = Number(rawPort);
