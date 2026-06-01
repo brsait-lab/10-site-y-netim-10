@@ -5,70 +5,217 @@ import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
-// Vendors cannot see payment/dues data
+function toPaymentDto(p: {
+  id: string; siteId: string; title: string; amount: number;
+  dueDate: string; type: string; description: string | null;
+  targetBlocks: string[]; targetUserIds: string[];
+  createdBy: string; cancelledAt: Date | null; createdAt: Date;
+}) {
+  return {
+    id: p.id, siteId: p.siteId, title: p.title, amount: p.amount,
+    dueDate: p.dueDate, type: p.type,
+    description: p.description ?? undefined,
+    targetBlocks: p.targetBlocks,
+    targetUserIds: p.targetUserIds,
+    createdBy: p.createdBy,
+    cancelledAt: p.cancelledAt?.toISOString() ?? null,
+    createdAt: p.createdAt.toISOString(),
+  };
+}
+
+function toUserPaymentDto(up: {
+  id: string; paymentId: string; userId: string; siteId: string;
+  status: string; paidAt: Date | null; note: string | null; receiptUrl: string | null;
+}) {
+  return {
+    id: up.id, paymentId: up.paymentId, userId: up.userId,
+    siteId: up.siteId, status: up.status,
+    paidAt: up.paidAt?.toISOString() ?? null,
+    note: up.note ?? undefined,
+    receiptUrl: up.receiptUrl ?? undefined,
+  };
+}
+
+// ─── List payments (excludes cancelled) ──────────────────────────────────────
 router.get("/payments", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
-  const rows = await prisma.payment.findMany({ where: { siteId } });
-  res.json(rows.map((p) => ({
-    id: p.id, siteId: p.siteId, title: p.title, amount: p.amount,
-    dueDate: p.dueDate, type: p.type, description: p.description ?? undefined,
-    createdAt: p.createdAt.toISOString(),
-  })));
+  const includeCancelled = req.query["includeCancelled"] === "true";
+  const rows = await prisma.payment.findMany({
+    where: { siteId, ...(!includeCancelled ? { cancelledAt: null } : {}) },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(rows.map(toPaymentDto));
 });
 
+// ─── Get single payment ───────────────────────────────────────────────────────
+router.get("/payments/:id", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { siteId } = (req as AuthRequest).authUser;
+  const payment = await prisma.payment.findUnique({ where: { id } });
+  if (!payment || payment.siteId !== siteId) {
+    res.status(404).json({ message: "Ödeme bulunamadı." });
+    return;
+  }
+  res.json(toPaymentDto(payment));
+});
+
+// ─── Create payment + assign to targeted users ────────────────────────────────
 router.post("/payments", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
+  const { userId: createdBy, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
-    siteId: string; title: string; amount: number;
+    siteId?: string; title: string; amount: number;
     dueDate: string; type: string; description?: string;
+    targetBlocks?: string[];
+    targetUserIds?: string[];
   };
 
-  const payment = await prisma.payment.create({ data: body });
+  const siteId = body.siteId ?? tokenSiteId;
 
-  const residents = await prisma.user.findMany({
-    where: { siteId: body.siteId, role: "resident", status: "active" },
+  const payment = await prisma.payment.create({
+    data: {
+      siteId,
+      title: body.title,
+      amount: body.amount,
+      dueDate: body.dueDate,
+      type: body.type,
+      description: body.description,
+      targetBlocks: body.targetBlocks ?? [],
+      targetUserIds: body.targetUserIds ?? [],
+      createdBy,
+    },
   });
+
+  // Determine target residents based on targeting rules
+  const hasBlockFilter = (body.targetBlocks ?? []).length > 0;
+  const hasUserFilter = (body.targetUserIds ?? []).length > 0;
+
+  let residents;
+  if (hasUserFilter) {
+    // Specific users
+    residents = await prisma.user.findMany({
+      where: {
+        id: { in: body.targetUserIds },
+        siteId,
+        role: "resident",
+        status: "active",
+        deletedAt: null,
+      },
+    });
+  } else if (hasBlockFilter) {
+    // Specific blocks
+    residents = await prisma.user.findMany({
+      where: {
+        siteId,
+        role: "resident",
+        status: "active",
+        deletedAt: null,
+        block: { in: body.targetBlocks },
+      },
+    });
+  } else {
+    // All residents in site
+    residents = await prisma.user.findMany({
+      where: { siteId, role: "resident", status: "active", deletedAt: null },
+    });
+  }
 
   if (residents.length > 0) {
     await prisma.userPayment.createMany({
       data: residents.map((u) => ({
-        paymentId: payment.id, userId: u.id, siteId: body.siteId, status: "pending",
+        paymentId: payment.id, userId: u.id, siteId, status: "pending",
       })),
     });
   }
 
-  res.status(201).json({
-    id: payment.id, siteId: payment.siteId, title: payment.title,
-    amount: payment.amount, dueDate: payment.dueDate, type: payment.type,
-    description: payment.description ?? undefined,
-    createdAt: payment.createdAt.toISOString(),
-  });
+  res.status(201).json(toPaymentDto(payment));
 });
 
-// Vendors cannot see user payment/dues records
+// ─── Cancel payment (soft-cancel, admin only) ─────────────────────────────────
+router.delete("/payments/:id", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { siteId } = (req as AuthRequest).authUser;
+
+  const payment = await prisma.payment.findUnique({ where: { id } });
+  if (!payment || payment.siteId !== siteId) {
+    res.status(404).json({ message: "Ödeme bulunamadı." });
+    return;
+  }
+  if (payment.cancelledAt) {
+    res.status(400).json({ message: "Bu ödeme zaten iptal edilmiş." });
+    return;
+  }
+
+  const updated = await prisma.payment.update({
+    where: { id },
+    data: { cancelledAt: new Date() },
+  });
+  res.json({ success: true, payment: toPaymentDto(updated) });
+});
+
+// ─── List user payments ────────────────────────────────────────────────────────
 router.get("/user-payments", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, siteId, role } = (req as AuthRequest).authUser;
   const rows = role === "resident"
     ? await prisma.userPayment.findMany({ where: { userId } })
     : await prisma.userPayment.findMany({ where: { siteId } });
 
-  res.json(rows.map((up) => ({
-    id: up.id, paymentId: up.paymentId, userId: up.userId,
-    siteId: up.siteId, status: up.status,
-    paidAt: up.paidAt?.toISOString(),
-  })));
+  res.json(rows.map(toUserPaymentDto));
 });
 
+// ─── Payment statistics (admin/security only) ─────────────────────────────────
+router.get("/user-payments/stats", requireAuth, blockRoles("merchant", "resident"), async (req: Request, res: Response) => {
+  const { siteId } = (req as AuthRequest).authUser;
+  const paymentId = req.query["paymentId"] as string | undefined;
+
+  const where = paymentId ? { siteId, paymentId } : { siteId };
+  const [total, paid, pending] = await Promise.all([
+    prisma.userPayment.count({ where }),
+    prisma.userPayment.count({ where: { ...where, status: "paid" } }),
+    prisma.userPayment.count({ where: { ...where, status: "pending" } }),
+  ]);
+
+  res.json({
+    total,
+    paid,
+    pending,
+    paidRate: total > 0 ? Math.round((paid / total) * 100) : 0,
+  });
+});
+
+// ─── Mark user payment as paid (extends: note + receiptUrl) ───────────────────
 router.patch("/user-payments/:id/pay", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
+  const { role, userId } = (req as AuthRequest).authUser;
+  const body = req.body as { note?: string; receiptUrl?: string };
+
+  const existing = await prisma.userPayment.findUnique({ where: { id } });
+  if (!existing) {
+    res.status(404).json({ message: "Kayıt bulunamadı." });
+    return;
+  }
+
+  // Residents can only pay their own dues
+  if (role === "resident" && existing.userId !== userId) {
+    res.status(403).json({ message: "Yalnızca kendi aidatınızı ödeyebilirsiniz." });
+    return;
+  }
+
+  if (existing.status === "paid") {
+    res.status(400).json({ message: "Bu aidat zaten ödenmiş." });
+    return;
+  }
+
   try {
     const updated = await prisma.userPayment.update({
-      where: { id }, data: { status: "paid", paidAt: new Date() },
+      where: { id },
+      data: {
+        status: "paid",
+        paidAt: new Date(),
+        note: body.note ?? existing.note,
+        receiptUrl: body.receiptUrl ?? existing.receiptUrl,
+      },
     });
-    res.json({
-      id: updated.id, paymentId: updated.paymentId, userId: updated.userId,
-      siteId: updated.siteId, status: updated.status,
-      paidAt: updated.paidAt?.toISOString(),
-    });
+    res.json(toUserPaymentDto(updated));
   } catch {
     res.status(404).json({ message: "Kayıt bulunamadı." });
   }

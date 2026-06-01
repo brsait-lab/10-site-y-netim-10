@@ -7,16 +7,17 @@ datasource db {
 }
 
 model Site {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   name           String
-  address        String   @default("")
-  adminId        String   @default("") @map("admin_id")
-  joinCode       String?  @map("join_code")
-  settlementType String   @default("site") @map("settlement_type")
-  bankName       String?  @map("bank_name")
-  accountHolder  String?  @map("account_holder")
+  address        String    @default("")
+  adminId        String    @default("") @map("admin_id")
+  joinCode       String?   @map("join_code")
+  settlementType String    @default("site") @map("settlement_type")
+  bankName       String?   @map("bank_name")
+  accountHolder  String?   @map("account_holder")
   iban           String?
-  createdAt      DateTime @default(now()) @map("created_at")
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   @@map("sites")
 }
@@ -43,6 +44,8 @@ model User {
   businessAddress     String?   @map("business_address")
   latitude            Float?
   longitude           Float?
+  consentGiven        Boolean   @default(false) @map("consent_given")
+  consentAt           DateTime? @map("consent_at")
   deletedAt           DateTime? @map("deleted_at")
   createdAt           DateTime  @default(now()) @map("created_at")
 
@@ -54,6 +57,7 @@ model AdminTransfer {
   siteId        String   @map("site_id")
   oldAdminId    String   @map("old_admin_id")
   newAdminId    String   @map("new_admin_id")
+  reason        String?
   transferredAt DateTime @default(now()) @map("transferred_at")
 
   @@map("admin_transfers")
@@ -86,28 +90,31 @@ model NotificationRead {
 }
 
 model Payment {
-  id            String   @id @default(uuid())
-  siteId        String   @map("site_id")
+  id            String    @id @default(uuid())
+  siteId        String    @map("site_id")
   title         String
   amount        Float
-  dueDate       String   @map("due_date")
+  dueDate       String    @map("due_date")
   type          String
   description   String?
-  targetBlocks  String[] @default([]) @map("target_blocks")
-  targetUserIds String[] @default([]) @map("target_user_ids")
-  createdBy     String   @default("") @map("created_by")
-  createdAt     DateTime @default(now()) @map("created_at")
+  targetBlocks  String[]  @default([]) @map("target_blocks")
+  targetUserIds String[]  @default([]) @map("target_user_ids")
+  createdBy     String    @default("") @map("created_by")
+  cancelledAt   DateTime? @map("cancelled_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   @@map("payments")
 }
 
 model UserPayment {
-  id        String    @id @default(uuid())
-  paymentId String    @map("payment_id")
-  userId    String    @map("user_id")
-  siteId    String    @map("site_id")
-  status    String    @default("pending")
-  paidAt    DateTime? @map("paid_at")
+  id         String    @id @default(uuid())
+  paymentId  String    @map("payment_id")
+  userId     String    @map("user_id")
+  siteId     String    @map("site_id")
+  status     String    @default("pending")
+  paidAt     DateTime? @map("paid_at")
+  note       String?
+  receiptUrl String?   @map("receipt_url")
 
   @@map("user_payments")
 }

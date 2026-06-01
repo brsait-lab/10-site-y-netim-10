@@ -17,6 +17,30 @@ router.get("/users", requireAuth, blockRoles("merchant"), async (req: Request, r
   res.json(users.map(toUserDto));
 });
 
+// ─── Get single user ──────────────────────────────────────────────────────────
+router.get("/users/:id", requireAuth, async (req: Request, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { userId, siteId, role } = (req as AuthRequest).authUser;
+
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user || user.deletedAt) {
+    res.status(404).json({ message: "Kullanıcı bulunamadı." });
+    return;
+  }
+
+  // Residents/security can only view users in their own site; merchants cannot view others
+  if (role === "merchant" && id !== userId) {
+    res.status(403).json({ message: "Erişim reddedildi." });
+    return;
+  }
+  if (role !== "admin" && user.siteId !== siteId) {
+    res.status(403).json({ message: "Erişim reddedildi." });
+    return;
+  }
+
+  res.json(toUserDto(user));
+});
+
 // ─── Update user profile ──────────────────────────────────────────────────────
 router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
@@ -97,6 +121,7 @@ router.post(
   async (req: Request, res: Response) => {
     const { id: newAdminId } = req.params as { id: string };
     const { userId: oldAdminId, siteId } = (req as AuthRequest).authUser;
+    const { reason } = req.body as { reason?: string };
 
     if (newAdminId === oldAdminId) {
       res.status(400).json({ message: "Kendinize devir yapamazsınız." });
@@ -113,18 +138,15 @@ router.post(
       return;
     }
 
-    // Execute transfer in a transaction
     const [newAdminUser, oldAdminUser] = await prisma.$transaction([
       prisma.user.update({ where: { id: newAdminId }, data: { role: "admin" } }),
       prisma.user.update({ where: { id: oldAdminId }, data: { role: "resident" } }),
     ]);
 
-    // Update site's adminId
     await prisma.site.update({ where: { id: siteId }, data: { adminId: newAdminId } });
 
-    // Record the transfer
     await prisma.adminTransfer.create({
-      data: { siteId, oldAdminId, newAdminId },
+      data: { siteId, oldAdminId, newAdminId, reason: reason ?? null },
     });
 
     res.json({
@@ -136,7 +158,33 @@ router.post(
   },
 );
 
-// ─── Approve / Reject (kept for backward compat, no longer primary flow) ──────
+// ─── KVKK: Kullanıcı açık rıza kaydı ─────────────────────────────────────────
+router.post(
+  "/users/:id/kvkk-consent",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const { userId } = (req as AuthRequest).authUser;
+
+    if (id !== userId) {
+      res.status(403).json({ message: "Yalnızca kendi rıza kaydınızı oluşturabilirsiniz." });
+      return;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { consentGiven: true, consentAt: new Date() },
+    });
+
+    res.json({
+      success: true,
+      consentGiven: updated.consentGiven,
+      consentAt: updated.consentAt?.toISOString(),
+    });
+  },
+);
+
+// ─── Approve / Reject (geriye dönük uyumluluk) ────────────────────────────────
 router.patch(
   "/users/:id/approve",
   requireAuth,
