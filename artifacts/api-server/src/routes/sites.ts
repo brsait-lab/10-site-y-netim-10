@@ -2,18 +2,18 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
+import { encryptIban, decryptIban } from "../lib/ibanCrypto.js";
 
 const router = Router();
 
 // ─── Public: lookup a site by join code ───────────────────────────────────────
-// Returns minimal info (name, settlementType) without exposing the joinCode
 router.get("/sites/lookup", async (req: Request, res: Response) => {
   const code = (req.query["joinCode"] as string | undefined)?.toUpperCase().trim();
   if (!code) {
     res.status(400).json({ message: "joinCode parametresi gereklidir." });
     return;
   }
-  const site = await prisma.site.findFirst({ where: { joinCode: code } });
+  const site = await prisma.site.findFirst({ where: { joinCode: code, deletedAt: null } });
   if (!site) {
     res.status(404).json({ message: "Geçersiz katılım kodu." });
     return;
@@ -26,9 +26,9 @@ router.get("/sites/lookup", async (req: Request, res: Response) => {
   });
 });
 
-// ─── List all sites (public for registration dropdown / admin use) ─────────────
+// ─── List all sites (excludes deleted) ────────────────────────────────────────
 router.get("/sites", async (_req: Request, res: Response) => {
-  const sites = await prisma.site.findMany();
+  const sites = await prisma.site.findMany({ where: { deletedAt: null } });
   res.json(sites.map((s) => ({
     id: s.id,
     name: s.name,
@@ -39,19 +39,18 @@ router.get("/sites", async (_req: Request, res: Response) => {
   })));
 });
 
-// ─── Get single site by id (admin sees joinCode + bank info) ──────────────────
+// ─── Get single site (admin sees joinCode + decrypted bank info) ──────────────
 router.get("/sites/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { siteId, role } = (req as AuthRequest).authUser;
 
-  // Non-admins can only see their own site (without joinCode/bank)
   if (role !== "admin" && siteId !== id) {
     res.status(403).json({ message: "Erişim reddedildi." });
     return;
   }
 
   const site = await prisma.site.findUnique({ where: { id } });
-  if (!site) {
+  if (!site || site.deletedAt) {
     res.status(404).json({ message: "Site bulunamadı." });
     return;
   }
@@ -65,18 +64,18 @@ router.get("/sites/:id", requireAuth, async (req: Request, res: Response) => {
     createdAt: site.createdAt.toISOString(),
   };
 
-  // Only the admin of this site sees joinCode and bank details
+  // Only the admin of this site sees joinCode and decrypted bank details
   if (role === "admin" && siteId === id) {
     dto.joinCode = site.joinCode;
     dto.bankName = site.bankName ?? undefined;
     dto.accountHolder = site.accountHolder ?? undefined;
-    dto.iban = site.iban ?? undefined;
+    dto.iban = decryptIban(site.iban);
   }
 
   res.json(dto);
 });
 
-// ─── Update site settings (admin only) ───────────────────────────────────────
+// ─── Update site settings (admin only) — encrypts IBAN on write ──────────────
 router.patch(
   "/sites/:id",
   requireAuth,
@@ -90,13 +89,19 @@ router.patch(
       return;
     }
 
-    const updates = req.body as {
+    const rawUpdates = req.body as {
       name?: string;
       address?: string;
       settlementType?: string;
       bankName?: string;
       accountHolder?: string;
       iban?: string;
+    };
+
+    // Encrypt IBAN before storing
+    const updates = {
+      ...rawUpdates,
+      ...(rawUpdates.iban !== undefined ? { iban: encryptIban(rawUpdates.iban) } : {}),
     };
 
     try {
@@ -110,7 +115,8 @@ router.patch(
         joinCode: updated.joinCode,
         bankName: updated.bankName ?? undefined,
         accountHolder: updated.accountHolder ?? undefined,
-        iban: updated.iban ?? undefined,
+        // Return decrypted IBAN to the admin who just set it
+        iban: decryptIban(updated.iban),
         createdAt: updated.createdAt.toISOString(),
       });
     } catch {

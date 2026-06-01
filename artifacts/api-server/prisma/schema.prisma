@@ -46,6 +46,8 @@ model User {
   longitude           Float?
   consentGiven        Boolean   @default(false) @map("consent_given")
   consentAt           DateTime? @map("consent_at")
+  consentVersion      String?   @map("consent_version")
+  sessionVersion      Int       @default(0) @map("session_version")
   deletedAt           DateTime? @map("deleted_at")
   createdAt           DateTime  @default(now()) @map("created_at")
 

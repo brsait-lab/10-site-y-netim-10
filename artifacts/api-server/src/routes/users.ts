@@ -28,7 +28,6 @@ router.get("/users/:id", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
-  // Residents/security can only view users in their own site; merchants cannot view others
   if (role === "merchant" && id !== userId) {
     res.status(403).json({ message: "Erişim reddedildi." });
     return;
@@ -113,7 +112,7 @@ router.delete(
   },
 );
 
-// ─── Transfer admin rights to another user ────────────────────────────────────
+// ─── Transfer admin rights (invalidates old admin session) ────────────────────
 router.post(
   "/users/:id/transfer-admin",
   requireAuth,
@@ -138,9 +137,22 @@ router.post(
       return;
     }
 
+    // Atomic transaction: role swap + sessionVersion bump on old admin
+    const oldAdminCurrent = await prisma.user.findUnique({
+      where: { id: oldAdminId },
+      select: { sessionVersion: true },
+    });
+
     const [newAdminUser, oldAdminUser] = await prisma.$transaction([
       prisma.user.update({ where: { id: newAdminId }, data: { role: "admin" } }),
-      prisma.user.update({ where: { id: oldAdminId }, data: { role: "resident" } }),
+      prisma.user.update({
+        where: { id: oldAdminId },
+        data: {
+          role: "resident",
+          // Bump sessionVersion → all existing tokens for this user become invalid
+          sessionVersion: (oldAdminCurrent?.sessionVersion ?? 0) + 1,
+        },
+      }),
     ]);
 
     await prisma.site.update({ where: { id: siteId }, data: { adminId: newAdminId } });
@@ -151,35 +163,39 @@ router.post(
 
     res.json({
       success: true,
-      message: `Yönetim ${newAdmin.name} adlı kullanıcıya devredildi.`,
+      message: `Yönetim ${newAdmin.name} adlı kullanıcıya devredildi. Eski yönetici oturumu sonlandırıldı.`,
       newAdmin: toUserDto(newAdminUser),
       oldAdmin: toUserDto(oldAdminUser),
     });
   },
 );
 
-// ─── KVKK: Kullanıcı açık rıza kaydı ─────────────────────────────────────────
+// ─── KVKK: Açık rıza kaydı (versiyon destekli) ───────────────────────────────
 router.post(
   "/users/:id/kvkk-consent",
   requireAuth,
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
     const { userId } = (req as AuthRequest).authUser;
+    const { version } = req.body as { version?: string };
 
     if (id !== userId) {
       res.status(403).json({ message: "Yalnızca kendi rıza kaydınızı oluşturabilirsiniz." });
       return;
     }
 
+    const consentVersion = version ?? "v1.0";
+
     const updated = await prisma.user.update({
       where: { id },
-      data: { consentGiven: true, consentAt: new Date() },
+      data: { consentGiven: true, consentAt: new Date(), consentVersion },
     });
 
     res.json({
       success: true,
       consentGiven: updated.consentGiven,
       consentAt: updated.consentAt?.toISOString(),
+      consentVersion: updated.consentVersion,
     });
   },
 );

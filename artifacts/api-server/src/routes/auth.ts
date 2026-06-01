@@ -48,6 +48,9 @@ export function toUserDto(u: User) {
     businessAddress: u.businessAddress ?? undefined,
     latitude: u.latitude ?? undefined,
     longitude: u.longitude ?? undefined,
+    consentGiven: u.consentGiven,
+    consentAt: u.consentAt?.toISOString() ?? undefined,
+    consentVersion: u.consentVersion ?? undefined,
     createdAt: u.createdAt.toISOString(),
   };
 }
@@ -90,7 +93,13 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     return;
   }
 
-  const token = signToken({ userId: user.id, role: user.role, siteId: user.siteId, email: user.email });
+  const token = signToken({
+    userId: user.id,
+    role: user.role,
+    siteId: user.siteId,
+    email: user.email,
+    sessionVersion: user.sessionVersion,
+  });
   res.json({ user: toUserDto(user), token });
 });
 
@@ -102,13 +111,10 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     password: string;
     role: string;
     phone: string;
-    // Admin only
     siteName?: string;
     siteAddress?: string;
     settlementType?: string;
-    // Non-admin: join via code
     joinCode?: string;
-    // Residential fields (used by resident based on settlement type)
     unitNo?: string;
     block?: string;
     tower?: string;
@@ -116,7 +122,6 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     floor?: string;
     officeNo?: string;
     plates?: string[];
-    // Merchant fields
     businessName?: string;
     businessCategory?: string;
     businessDescription?: string;
@@ -139,7 +144,6 @@ router.post("/auth/register", async (req: Request, res: Response) => {
 
   const passwordHash = await hashPassword(password);
 
-  // ── ADMIN: creates a brand-new site ──────────────────────────────────────
   if (role === "admin") {
     if (!data.siteName) {
       res.json({ success: false, message: "Site adı gereklidir." });
@@ -169,12 +173,14 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     });
     await prisma.site.update({ where: { id: site.id }, data: { adminId: user.id } });
 
-    const token = signToken({ userId: user.id, role: "admin", siteId: site.id, email: user.email });
+    const token = signToken({
+      userId: user.id, role: "admin", siteId: site.id,
+      email: user.email, sessionVersion: user.sessionVersion,
+    });
     res.json({ success: true, message: "Hesap oluşturuldu.", user: toUserDto(user), token });
     return;
   }
 
-  // ── MERCHANT: no site required ────────────────────────────────────────────
   if (role === "merchant") {
     const user = await prisma.user.create({
       data: {
@@ -189,12 +195,14 @@ router.post("/auth/register", async (req: Request, res: Response) => {
         plates: data.plates ?? [],
       },
     });
-    const token = signToken({ userId: user.id, role: "merchant", siteId: "global", email: user.email });
+    const token = signToken({
+      userId: user.id, role: "merchant", siteId: "global",
+      email: user.email, sessionVersion: user.sessionVersion,
+    });
     res.json({ success: true, message: "Kayıt başarılı.", user: toUserDto(user), token });
     return;
   }
 
-  // ── RESIDENT / SECURITY: must provide joinCode ───────────────────────────
   if (!data.joinCode) {
     res.json({ success: false, message: "Katılım kodu (Join Code) gereklidir." });
     return;
@@ -208,7 +216,6 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     return;
   }
 
-  // Validate required residential fields per settlement type
   if (role === "resident") {
     const st = site.settlementType;
     if ((st === "villa") && !data.villaNo) {
@@ -244,7 +251,10 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     },
   });
 
-  const token = signToken({ userId: user.id, role, siteId: site.id, email: user.email });
+  const token = signToken({
+    userId: user.id, role, siteId: site.id,
+    email: user.email, sessionVersion: user.sessionVersion,
+  });
   res.json({
     success: true,
     message: "Kayıt başarılı. Anında giriş yapabilirsiniz.",

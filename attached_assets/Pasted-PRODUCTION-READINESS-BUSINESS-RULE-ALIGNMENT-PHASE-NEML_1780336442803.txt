@@ -1,0 +1,119 @@
+PRODUCTION READINESS & BUSINESS RULE ALIGNMENT PHASE
+
+ÖNEMLİ:
+
+Yeni paralel sistem oluşturma.
+
+Mevcut mimari üzerine entegre et.
+
+Tenant izolasyonu, sohbet sistemi, aidat sistemi ve vendor izolasyonu korunacak.
+
+1. GÜVENLİK DUYURU YETKİLERİ
+
+Mevcut rol kurallarını analiz et.
+
+Güvenlik:
+
+* Site duyurularını görüntüleyebilmeli.
+* Kendisine gelen duyuruları listeleyebilmeli.
+
+Ek olarak:
+
+Operasyonel duyuru gönderme desteği ekle.
+
+Örnek:
+
+* Otopark bilgilendirmesi
+* Asansör arızası
+* Güvenlik bilgilendirmesi
+* Kargo yoğunluğu
+
+Bu duyurular yalnızca kendi sitesi içerisinde yayınlanmalı.
+
+Tenant izolasyonu korunmalı.
+
+2. ESNAF GÖRÜNÜRLÜĞÜ
+
+Mevcut vendor sistemini analiz et.
+
+İş kuralı:
+
+Tüm aktif esnaflar tüm sakinler tarafından görüntülenebilmelidir.
+
+Esnaf kayıtları:
+
+* Site bazlı filtrelenmemeli
+* Tenant izolasyonuna dahil edilmemeli
+* Global görünür olmalı
+
+Sakin:
+
+Esnaf Bul ekranında aktif esnafları görebilmeli.
+
+3. ESNAF İZOLASYONU KORUNSUN
+
+Aşağıdaki kural korunacak:
+
+Esnaflar birbirlerini göremez.
+
+Vendor A:
+
+* Vendor B profilini göremez
+* Vendor B taleplerini göremez
+* Vendor B sohbetlerini göremez
+
+4. IBAN GÜVENLİĞİ
+
+Site yönetim hesabı dışındaki kişisel IBAN verileri korunmalı.
+
+Üretim hazırlığı için:
+
+* Şifreleme stratejisini uygula veya hazırla
+* Mevcut veri modelini analiz et
+* Şifreleme sonrası endpoint uyumluluğunu koru
+
+5. YÖNETİCİ DEVRİ GÜVENLİĞİ
+
+Admin transferinden sonra:
+
+* Eski admin oturumları geçersiz hale getirilmeli
+  veya
+* Role claim yenileme mekanizması uygulanmalı
+
+Eski admin yönetici ekranlarına erişememeli.
+
+6. KVKK VERSİYONLAMA
+
+Mevcut consent sistemini genişlet.
+
+Örnek:
+
+consentVersion
+
+v1.0
+v1.1
+v2.0
+
+hangi metne onay verildiği takip edilebilmeli.
+
+7. AİDAT İPTAL TUTARLILIĞI
+
+Bir aidat iptal edildiğinde:
+
+Bağlı user_payment kayıtları da uygun duruma geçirilmeli.
+
+Veri tutarlılığı korunmalı.
+
+8. RAPOR
+
+İş bitince raporla:
+
+* Güncellenen endpointler
+* Güncellenen yetki kuralları
+* Esnaf görünürlüğü sonucu
+* Güvenlik duyuru sonucu
+* Admin transfer güvenliği
+* IBAN güvenliği
+* KVKK versiyonlama
+* Aidat tutarlılık kontrolleri
+* Geriye dönük uyumluluk durumu

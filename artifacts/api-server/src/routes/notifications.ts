@@ -5,6 +5,9 @@ import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
+// Operasyonel duyuru tipleri (güvenlik görevlisi gönderebilir)
+const SECURITY_OPERATIONAL_TYPES = ["parking", "elevator", "security_info", "cargo_density"] as const;
+
 function toDto(n: Awaited<ReturnType<typeof prisma.notification.findFirst>>) {
   if (!n) return null;
   return {
@@ -23,7 +26,6 @@ router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Re
   res.json(rows.map((n) => toDto(n)));
 });
 
-// Vendors cannot send notifications
 router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, role, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
@@ -84,13 +86,29 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
   }
 
   // ── Security rules ──────────────────────────────────────────────────────────
-  // Security can notify residents (and admins), but not merchants
   if (role === "security") {
-    const toRoles = body.toRoles ?? [];
-    const forbidden = toRoles.filter((r) => r === "merchant");
-    if (forbidden.length > 0) {
-      res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
-      return;
+    const isOperational = (SECURITY_OPERATIONAL_TYPES as readonly string[]).includes(body.type);
+
+    if (isOperational) {
+      // Operasyonel duyurular: yalnızca kendi sitesi, tüm roller (merchant hariç)
+      const toRoles = body.toRoles ?? [];
+      if (toRoles.includes("merchant")) {
+        res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
+        return;
+      }
+      // Site izolasyonu: kendi sitesi dışına gönderemez
+      const effectiveSiteId = body.siteId || tokenSiteId;
+      if (effectiveSiteId !== tokenSiteId) {
+        res.status(403).json({ message: "Yalnızca kendi sitenizde duyuru yayınlayabilirsiniz." });
+        return;
+      }
+    } else {
+      // Standart bildirimler: sakin ve adminlere gönderebilir, merchant'a gönderemez
+      const toRoles = body.toRoles ?? [];
+      if (toRoles.includes("merchant")) {
+        res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
+        return;
+      }
     }
   }
 

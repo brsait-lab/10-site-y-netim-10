@@ -6,6 +6,7 @@ export interface AuthUser {
   role: string;
   siteId: string;
   email: string;
+  sessionVersion: number;
 }
 
 const JWT_SECRET = process.env["SESSION_SECRET"] ?? "dev-secret-change-me";
