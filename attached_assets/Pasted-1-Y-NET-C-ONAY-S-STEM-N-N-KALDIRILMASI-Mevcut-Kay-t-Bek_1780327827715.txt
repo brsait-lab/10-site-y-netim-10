@@ -1,0 +1,361 @@
+1. YÖNETİCİ ONAY SİSTEMİNİN KALDIRILMASI
+
+Mevcut:
+
+Kayıt
+↓
+Beklemede
+↓
+Yönetici Onayı
+↓
+Giriş
+
+Yeni Akış:
+
+Yönetici Site Oluşturur
+↓
+Join Code Üretilir
+↓
+Sakin Join Code ile Kayıt Olur
+↓
+Anında Giriş Yapabilir
+↓
+Yönetici Gerekirse Sonradan Müdahale Eder
+
+Bekleyen kullanıcı onayı zorunluluğunu kaldır.
+
+Yeni kullanıcı kayıt olur olmaz aktif kullanılabilir olmalı.
+
+2. JOIN CODE SİSTEMİ
+
+Her site için:
+
+joinCode
+
+alanı ekle.
+
+Kurallar:
+
+Site oluşturulunca otomatik üret.
+Benzersiz olmalı.
+Yönetici görüntüleyebilmeli.
+Yönetici kopyalayabilmeli.
+İleride QR desteğine uygun tasarla.
+
+Siteye katılım artık Join Code ile yapılacak.
+
+Aynı amaç için ikinci üyelik sistemi oluşturma.
+
+Mevcut tenant yapısına entegre et.
+
+3. YERLEŞİM TİPİ
+
+Site oluşturulurken:
+
+Site
+Rezidans
+Apartman
+Villa Sitesi
+Plaza
+İş Merkezi
+Karma Yaşam Alanı
+
+seçilebilmeli.
+
+Site modeline entegre et.
+
+4. DİNAMİK KAYIT FORMU
+
+Yerleşim tipine göre kayıt ekranı değişmeli.
+
+Örnek:
+
+Apartman:
+
+Ad Soyad
+Daire No
+
+Site:
+
+Ad Soyad
+Blok
+Daire No
+
+Rezidans:
+
+Ad Soyad
+Kule
+Kat
+Daire No
+
+Villa:
+
+Ad Soyad
+Villa No
+
+Plaza:
+
+Ad Soyad
+Kat
+Ofis No
+5. ZORUNLU ALANLAR
+
+Kullanıcı kaydı tamamlanabilmesi için:
+
+Ad Soyad
+Yerleşim Bilgisi
+Daire / Ofis / Villa Bilgisi
+
+zorunlu olmalı.
+
+Eksik bilgi ile kayıt tamamlanamamalı.
+
+6. KULLANICI GÖRÜNÜRLÜĞÜ
+
+Aynı site içerisindeki kullanıcılar görebilmeli:
+
+Ad Soyad
+Blok
+Kule
+Villa
+Daire No
+Ofis No
+
+Ama sadece ilgili alanlar gösterilmeli.
+
+Gösterilmeyecek:
+
+Telefon
+E-posta
+Şifre
+TC Kimlik
+Finansal Bilgiler
+Ödeme Bilgileri
+7. TC KİMLİK
+
+TC Kimlik numarası sistemden tamamen çıkarılmalı.
+
+Toplanmamalı.
+
+Saklanmamalı.
+
+Gösterilmemeli.
+
+Bu proje için iş gereksinimi bulunmuyor.
+
+8. KVKK UYUMLULUĞU
+
+Kayıt ekranına açık aydınlatma metni ekle.
+
+Metinde açıkça belirtilmeli:
+
+"Ad Soyad, Blok/Kule/Villa bilgileri ve Daire/Ofis numarası aynı site içerisindeki diğer kullanıcılar tarafından görüntülenebilir."
+
+Ayrıca:
+
+Telefon
+E-posta
+Finansal Bilgiler
+Ödeme Bilgileri
+
+diğer kullanıcılara gösterilmez.
+
+9. KULLANICI SİLME
+
+Yönetici aynı site içerisindeki kullanıcıları silebilmeli.
+
+Silme işlemi:
+
+Soft Delete
+
+olmalı.
+
+Silinen kullanıcı:
+
+Giriş yapamaz
+Sohbet açamaz
+Bildirim gönderemez
+Kullanıcı listesinde görünmez
+Aktif kullanıcı sayılmaz
+
+Ancak:
+
+Ödeme geçmişleri
+Aidat geçmişleri
+Bildirim kayıtları
+Sistem kayıtları
+
+korunmalı.
+
+10. YÖNETİCİ DEVİR SİSTEMİ
+
+Yeni özellik:
+
+Yönetimi Devret
+
+Kurallar:
+
+Sadece aktif yönetici kullanabilir.
+Sadece aynı site kullanıcıları seçilebilir.
+Güvenlik onayı ekranı gösterilmeli.
+
+Devir tamamlanınca:
+
+Yeni kullanıcı:
+
+ADMIN
+
+Eski kullanıcı:
+
+RESIDENT
+
+olmalı.
+
+Site yöneticisiz bırakılamamalı.
+
+11. YÖNETİCİ DEVİR GEÇMİŞİ
+
+Gerekirse:
+
+admin_transfers
+
+tablosu oluştur.
+
+Alanlar:
+
+id
+siteId
+oldAdminId
+newAdminId
+transferredAt
+
+Amaç yalnızca geçmiş takibi.
+
+12. AİDAT SİSTEMİ REVİZYONU
+
+Mevcut aidat yapısını analiz et.
+
+Mevcut sistemi bozmadan geliştir.
+
+Yönetici:
+
+Aidat oluşturabilmeli
+Ek gider oluşturabilmeli
+Son ödeme tarihi verebilmeli
+Tüm siteye gönderebilmeli
+Belirli bloklara gönderebilmeli
+Belirli kullanıcılara gönderebilmeli
+13. AİDAT TABLOLARI
+
+Mevcut tablolar yeterli değilse geliştir.
+
+Örnek yapı:
+
+dues
+
+id
+siteId
+title
+description
+amount
+dueDate
+createdBy
+createdAt
+
+user_dues
+
+id
+dueId
+userId
+status
+assignedAt
+
+Status:
+
+PENDING
+PAID
+OVERDUE
+14. ÖDEME KANITI
+
+İlk sürümde ödeme kuruluşu zorunlu değil.
+
+Model:
+
+Yönetici Site IBAN'ı tanımlar.
+
+Sakin:
+
+EFT/Havale yapar
+Dekont yükler
+Ödeme bildirimi gönderir
+
+Yönetici:
+
+Onaylar
+Reddeder
+15. IBAN GİZLİLİĞİ
+
+KVKK gereği:
+
+Kullanıcıların kişisel IBAN bilgileri:
+
+Diğer sakinler tarafından görülemez
+Güvenlik tarafından görülemez
+Esnaf tarafından görülemez
+Yönetici tarafından görülemez
+
+Kişisel IBAN yalnızca hesap sahibi tarafından görüntülenebilir.
+
+IBAN paylaşımı ancak kullanıcının açık işlemi ile yapılabilir.
+
+16. SİTE YÖNETİM HESABI
+
+Aidat için:
+
+Site Yönetim Hesabı
+
+tanımlanabilmeli.
+
+Yönetici:
+
+Banka Adı
+Hesap Sahibi
+IBAN
+
+girebilmeli.
+
+Bu bilgi aidat ödeme ekranında gösterilebilir.
+
+Bu IBAN aidat tahsilatı amacıyla kullanılacaktır.
+
+17. UYUMLULUK KONTROLÜ
+
+Geliştirme sonunda doğrula:
+
+Tenant izolasyonu çalışıyor mu?
+Vendor izolasyonu çalışıyor mu?
+Sohbet sistemi çalışıyor mu?
+Bildirim sistemi çalışıyor mu?
+Aidat sistemi çalışıyor mu?
+Soft delete çalışıyor mu?
+Yönetici devri çalışıyor mu?
+Join Code çalışıyor mu?
+
+Herhangi bir kırılma varsa listele ve düzelt.
+
+RAPOR
+
+İş bitince raporla:
+
+Güncellenen tablolar
+Eklenen alanlar
+Yeni endpointler
+Migration detayları
+KVKK uyumluluk kararları
+Aidat mimarisi
+Yönetici devir sistemi
+Soft delete sistemi
+Geriye dönük uyumluluk sonucu
+Olası riskler
+
+Bu geliştirmeler mevcut mimariyi büyütmeli; aynı işi yapan ikinci sistemler oluşturmamalıdır.
