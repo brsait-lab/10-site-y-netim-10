@@ -34,10 +34,10 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
 
   // ── Resident rules ──────────────────────────────────────────────────────────
   if (role === "resident") {
-    const allowedTypes = ["noise", "package"];
+    const allowedTypes = ["noise", "package", "general"];
     if (!allowedTypes.includes(body.type)) {
       res.status(403).json({
-        message: "Sakinler yalnızca gürültü veya kargo bildirimi gönderebilir.",
+        message: "Sakinler gürültü, kargo veya genel bildirim gönderebilir.",
       });
       return;
     }
