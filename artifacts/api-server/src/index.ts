@@ -1,5 +1,9 @@
+import { validateIbanSecretAtStartup } from "./lib/ibanCrypto.js";
 import app from "./app";
 import { logger } from "./lib/logger";
+
+// ─── Secret validation (fail-fast in production) ──────────────────────────────
+validateIbanSecretAtStartup();
 
 const rawPort = process.env["PORT"];
 
