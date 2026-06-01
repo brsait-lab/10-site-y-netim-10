@@ -6,18 +6,26 @@ import { toUserDto } from "./auth.js";
 
 const router = Router();
 
-// ─── List users in a site (excludes soft-deleted) ────────────────────────────
+const DEFAULT_LIMIT = 500;
+const MAX_LIMIT = 1000;
+
 router.get("/users", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const querySiteId = (req.query["siteId"] as string | undefined) ?? tokenSiteId;
 
+  const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
+  const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
   const users = await prisma.user.findMany({
     where: { siteId: querySiteId, deletedAt: null },
+    take: limit,
+    skip: offset,
   });
   res.json(users.map(toUserDto));
 });
 
-// ─── Get single user ──────────────────────────────────────────────────────────
 router.get("/users/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId, siteId, role } = (req as AuthRequest).authUser;
@@ -40,7 +48,6 @@ router.get("/users/:id", requireAuth, async (req: Request, res: Response) => {
   res.json(toUserDto(user));
 });
 
-// ─── Update user profile ──────────────────────────────────────────────────────
 router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId, role } = (req as AuthRequest).authUser;
@@ -76,7 +83,6 @@ router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// ─── Soft-delete a user (admin only, same site) ───────────────────────────────
 router.delete(
   "/users/:id",
   requireAuth,
@@ -112,7 +118,6 @@ router.delete(
   },
 );
 
-// ─── Transfer admin rights (invalidates old admin session) ────────────────────
 router.post(
   "/users/:id/transfer-admin",
   requireAuth,
@@ -137,7 +142,6 @@ router.post(
       return;
     }
 
-    // Atomic transaction: role swap + sessionVersion bump on old admin
     const oldAdminCurrent = await prisma.user.findUnique({
       where: { id: oldAdminId },
       select: { sessionVersion: true },
@@ -149,7 +153,6 @@ router.post(
         where: { id: oldAdminId },
         data: {
           role: "resident",
-          // Bump sessionVersion → all existing tokens for this user become invalid
           sessionVersion: (oldAdminCurrent?.sessionVersion ?? 0) + 1,
         },
       }),
@@ -170,7 +173,6 @@ router.post(
   },
 );
 
-// ─── KVKK: Açık rıza kaydı (versiyon destekli) ───────────────────────────────
 router.post(
   "/users/:id/kvkk-consent",
   requireAuth,
@@ -200,7 +202,6 @@ router.post(
   },
 );
 
-// ─── Approve / Reject (geriye dönük uyumluluk) ────────────────────────────────
 router.patch(
   "/users/:id/approve",
   requireAuth,

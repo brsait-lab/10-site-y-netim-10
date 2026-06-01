@@ -5,6 +5,9 @@ import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
+const DEFAULT_LIMIT = 200;
+const MAX_LIMIT = 500;
+
 function toPaymentDto(p: {
   id: string; siteId: string; title: string; amount: number;
   dueDate: string; type: string; description: string | null;
@@ -36,18 +39,24 @@ function toUserPaymentDto(up: {
   };
 }
 
-// ─── List payments (excludes cancelled by default) ────────────────────────────
 router.get("/payments", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
   const includeCancelled = req.query["includeCancelled"] === "true";
+
+  const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
+  const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
   const rows = await prisma.payment.findMany({
     where: { siteId, ...(!includeCancelled ? { cancelledAt: null } : {}) },
     orderBy: { createdAt: "desc" },
+    take: limit,
+    skip: offset,
   });
   res.json(rows.map(toPaymentDto));
 });
 
-// ─── Get single payment ───────────────────────────────────────────────────────
 router.get("/payments/:id", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { siteId } = (req as AuthRequest).authUser;
@@ -59,7 +68,6 @@ router.get("/payments/:id", requireAuth, blockRoles("merchant"), async (req: Req
   res.json(toPaymentDto(payment));
 });
 
-// ─── Create payment + assign to targeted users ────────────────────────────────
 router.post("/payments", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
   const { userId: createdBy, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
@@ -91,21 +99,18 @@ router.post("/payments", requireAuth, blockRoles("merchant", "resident", "securi
   let residents;
   if (hasUserFilter) {
     residents = await prisma.user.findMany({
-      where: {
-        id: { in: body.targetUserIds },
-        siteId, role: "resident", status: "active", deletedAt: null,
-      },
+      where: { id: { in: body.targetUserIds }, siteId, role: "resident", status: "active", deletedAt: null },
+      select: { id: true },
     });
   } else if (hasBlockFilter) {
     residents = await prisma.user.findMany({
-      where: {
-        siteId, role: "resident", status: "active", deletedAt: null,
-        block: { in: body.targetBlocks },
-      },
+      where: { siteId, role: "resident", status: "active", deletedAt: null, block: { in: body.targetBlocks } },
+      select: { id: true },
     });
   } else {
     residents = await prisma.user.findMany({
       where: { siteId, role: "resident", status: "active", deletedAt: null },
+      select: { id: true },
     });
   }
 
@@ -120,7 +125,6 @@ router.post("/payments", requireAuth, blockRoles("merchant", "resident", "securi
   res.status(201).json(toPaymentDto(payment));
 });
 
-// ─── Cancel payment (soft-cancel + cascade pending UserPayments) ──────────────
 router.delete("/payments/:id", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { siteId } = (req as AuthRequest).authUser;
@@ -135,36 +139,29 @@ router.delete("/payments/:id", requireAuth, blockRoles("merchant", "resident", "
     return;
   }
 
-  // Atomic: cancel payment + cascade cancel all pending user_payments
   const [updatedPayment, { count: cancelledCount }] = await prisma.$transaction([
-    prisma.payment.update({
-      where: { id },
-      data: { cancelledAt: new Date() },
-    }),
-    prisma.userPayment.updateMany({
-      where: { paymentId: id, status: "pending" },
-      data: { status: "cancelled" },
-    }),
+    prisma.payment.update({ where: { id }, data: { cancelledAt: new Date() } }),
+    prisma.userPayment.updateMany({ where: { paymentId: id, status: "pending" }, data: { status: "cancelled" } }),
   ]);
 
-  res.json({
-    success: true,
-    payment: toPaymentDto(updatedPayment),
-    cancelledUserPayments: cancelledCount,
-  });
+  res.json({ success: true, payment: toPaymentDto(updatedPayment), cancelledUserPayments: cancelledCount });
 });
 
-// ─── List user payments ────────────────────────────────────────────────────────
 router.get("/user-payments", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, siteId, role } = (req as AuthRequest).authUser;
+
+  const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
+  const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
   const rows = role === "resident"
-    ? await prisma.userPayment.findMany({ where: { userId } })
-    : await prisma.userPayment.findMany({ where: { siteId } });
+    ? await prisma.userPayment.findMany({ where: { userId }, take: limit, skip: offset })
+    : await prisma.userPayment.findMany({ where: { siteId }, take: limit, skip: offset });
 
   res.json(rows.map(toUserPaymentDto));
 });
 
-// ─── Payment statistics (admin/security only) ─────────────────────────────────
 router.get("/user-payments/stats", requireAuth, blockRoles("merchant", "resident"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
   const paymentId = req.query["paymentId"] as string | undefined;
@@ -178,46 +175,32 @@ router.get("/user-payments/stats", requireAuth, blockRoles("merchant", "resident
   ]);
 
   res.json({
-    total,
-    paid,
-    pending,
-    cancelled,
+    total, paid, pending, cancelled,
     paidRate: total > 0 ? Math.round((paid / total) * 100) : 0,
   });
 });
 
-// ─── Mark user payment as paid ────────────────────────────────────────────────
 router.patch("/user-payments/:id/pay", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { role, userId } = (req as AuthRequest).authUser;
   const body = req.body as { note?: string; receiptUrl?: string };
 
   const existing = await prisma.userPayment.findUnique({ where: { id } });
-  if (!existing) {
-    res.status(404).json({ message: "Kayıt bulunamadı." });
-    return;
-  }
+  if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
 
   if (role === "resident" && existing.userId !== userId) {
     res.status(403).json({ message: "Yalnızca kendi aidatınızı ödeyebilirsiniz." });
     return;
   }
 
-  if (existing.status === "paid") {
-    res.status(400).json({ message: "Bu aidat zaten ödenmiş." });
-    return;
-  }
-  if (existing.status === "cancelled") {
-    res.status(400).json({ message: "İptal edilmiş aidat ödenemez." });
-    return;
-  }
+  if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }
+  if (existing.status === "cancelled") { res.status(400).json({ message: "İptal edilmiş aidat ödenemez." }); return; }
 
   try {
     const updated = await prisma.userPayment.update({
       where: { id },
       data: {
-        status: "paid",
-        paidAt: new Date(),
+        status: "paid", paidAt: new Date(),
         note: body.note ?? existing.note,
         receiptUrl: body.receiptUrl ?? existing.receiptUrl,
       },

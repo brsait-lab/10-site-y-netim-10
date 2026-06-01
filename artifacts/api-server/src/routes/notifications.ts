@@ -5,25 +5,60 @@ import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
-// Operasyonel duyuru tipleri (güvenlik görevlisi gönderebilir)
 const SECURITY_OPERATIONAL_TYPES = ["parking", "elevator", "security_info", "cargo_density"] as const;
 
-function toDto(n: Awaited<ReturnType<typeof prisma.notification.findFirst>>) {
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
+
+function toDto(
+  n: Awaited<ReturnType<typeof prisma.notification.findFirst>>,
+  readByIds: string[] = [],
+) {
   if (!n) return null;
   return {
     id: n.id, type: n.type, title: n.title, message: n.message,
     fromUserId: n.fromUserId, fromName: n.fromName,
     toRoles: n.toRoles ?? undefined, toUserIds: n.toUserIds ?? undefined,
-    siteId: n.siteId, readBy: n.readBy ?? [],
+    siteId: n.siteId,
+    readBy: readByIds,
     createdAt: n.createdAt.toISOString(),
   };
 }
 
-// Vendors cannot receive or send general notifications
 router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
-  const rows = await prisma.notification.findMany({ where: { siteId }, orderBy: { createdAt: "desc" } });
-  res.json(rows.map((n) => toDto(n)));
+
+  const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
+  const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+  const rows = await prisma.notification.findMany({
+    where: { siteId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    skip: offset,
+  });
+
+  if (rows.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const notifIds = rows.map((n) => n.id);
+  const reads = await prisma.notificationRead.findMany({
+    where: { notificationId: { in: notifIds } },
+    select: { notificationId: true, userId: true },
+  });
+
+  const readMap = new Map<string, string[]>();
+  for (const r of reads) {
+    const existing = readMap.get(r.notificationId);
+    if (existing) existing.push(r.userId);
+    else readMap.set(r.notificationId, [r.userId]);
+  }
+
+  res.json(rows.map((n) => toDto(n, readMap.get(n.id) ?? [])));
 });
 
 router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
@@ -34,17 +69,13 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
     toRoles?: string[]; toUserIds?: string[]; siteId: string;
   };
 
-  // ── Resident rules ──────────────────────────────────────────────────────────
   if (role === "resident") {
     const allowedTypes = ["noise", "package", "general"];
     if (!allowedTypes.includes(body.type)) {
-      res.status(403).json({
-        message: "Sakinler gürültü, kargo veya genel bildirim gönderebilir.",
-      });
+      res.status(403).json({ message: "Sakinler gürültü, kargo veya genel bildirim gönderebilir." });
       return;
     }
 
-    // Noise: once per day per target user
     if (body.type === "noise") {
       const targetUserId = body.toUserIds?.[0];
       if (targetUserId) {
@@ -65,7 +96,6 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
       }
     }
 
-    // Package: must target security role only
     if (body.type === "package") {
       const toRoles = body.toRoles ?? [];
       const toUserIds = body.toUserIds ?? [];
@@ -77,33 +107,27 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
           })) === 0);
 
       if (!targetsSecurity || toRoles.some((r) => r !== "security")) {
-        res.status(403).json({
-          message: "Kargo bildirimi yalnızca güvenlik görevlilerine gönderilebilir.",
-        });
+        res.status(403).json({ message: "Kargo bildirimi yalnızca güvenlik görevlilerine gönderilebilir." });
         return;
       }
     }
   }
 
-  // ── Security rules ──────────────────────────────────────────────────────────
   if (role === "security") {
     const isOperational = (SECURITY_OPERATIONAL_TYPES as readonly string[]).includes(body.type);
 
     if (isOperational) {
-      // Operasyonel duyurular: yalnızca kendi sitesi, tüm roller (merchant hariç)
       const toRoles = body.toRoles ?? [];
       if (toRoles.includes("merchant")) {
         res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
         return;
       }
-      // Site izolasyonu: kendi sitesi dışına gönderemez
       const effectiveSiteId = body.siteId || tokenSiteId;
       if (effectiveSiteId !== tokenSiteId) {
         res.status(403).json({ message: "Yalnızca kendi sitenizde duyuru yayınlayabilirsiniz." });
         return;
       }
     } else {
-      // Standart bildirimler: sakin ve adminlere gönderebilir, merchant'a gönderemez
       const toRoles = body.toRoles ?? [];
       if (toRoles.includes("merchant")) {
         res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
@@ -120,20 +144,15 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
       siteId: body.siteId || tokenSiteId, readBy: [],
     },
   });
-  res.status(201).json(toDto(row));
+  res.status(201).json(toDto(row, []));
 });
 
 router.patch("/notifications/:id/read", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId } = (req as AuthRequest).authUser;
 
-  const current = await prisma.notification.findUnique({ where: { id } });
-  if (!current) { res.status(404).json({ message: "Bildirim bulunamadı." }); return; }
-
-  const readBy = current.readBy ?? [];
-  if (!readBy.includes(userId)) {
-    await prisma.notification.update({ where: { id }, data: { readBy: [...readBy, userId] } });
-  }
+  const exists = await prisma.notification.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) { res.status(404).json({ message: "Bildirim bulunamadı." }); return; }
 
   await prisma.notificationRead.upsert({
     where: { notificationId_userId: { notificationId: id, userId } },

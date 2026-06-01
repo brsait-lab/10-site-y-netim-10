@@ -5,6 +5,9 @@ import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
+const DEFAULT_LIMIT = 200;
+const MAX_LIMIT = 500;
+
 function toDto(p: Awaited<ReturnType<typeof prisma.package.findFirst>>) {
   if (!p) return null;
   return {
@@ -16,10 +19,20 @@ function toDto(p: Awaited<ReturnType<typeof prisma.package.findFirst>>) {
   };
 }
 
-// Vendors cannot access package tracking
 router.get("/packages", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
-  const rows = await prisma.package.findMany({ where: { siteId } });
+
+  const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
+  const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+  const rows = await prisma.package.findMany({
+    where: { siteId },
+    orderBy: { receivedAt: "desc" },
+    take: limit,
+    skip: offset,
+  });
   res.json(rows.map(toDto));
 });
 
