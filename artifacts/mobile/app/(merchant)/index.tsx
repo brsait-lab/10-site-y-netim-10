@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,20 +16,81 @@ import { useColors } from "@/hooks/useColors";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
+function parseHours(raw: string): { open: string; close: string } {
+  const match = raw.match(/^(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})$/);
+  if (match) return { open: match[1], close: match[2] };
+  return { open: "09:00", close: "21:00" };
+}
+
+function formatHours(open: string, close: string): string {
+  if (!open && !close) return "";
+  return `${open} - ${close}`;
+}
+
+const HOUR_OPTIONS = [
+  "00:00","06:00","07:00","08:00","09:00","10:00","11:00","12:00",
+  "13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00",
+  "21:00","22:00","23:00","24:00",
+];
+
+function HourSelector({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const colors = useColors();
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={[hourStyles.label, { color: colors.mutedForeground }]}>{label}</Text>
+      <Pressable onPress={() => setOpen(!open)}
+        style={[hourStyles.selector, { borderColor: open ? colors.primary : colors.border, backgroundColor: colors.card, borderRadius: 10 }]}>
+        <Feather name="clock" size={14} color={colors.primary} />
+        <Text style={[hourStyles.selectorText, { color: colors.foreground }]}>{value || "—"}</Text>
+        <Feather name={open ? "chevron-up" : "chevron-down"} size={14} color={colors.mutedForeground} />
+      </Pressable>
+      {open && (
+        <View style={[hourStyles.dropdown, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 10 }]}>
+          <ScrollView style={{ maxHeight: 180 }} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+            {HOUR_OPTIONS.map((h) => (
+              <Pressable key={h} onPress={() => { onChange(h); setOpen(false); }}
+                style={[hourStyles.option, { backgroundColor: value === h ? colors.primaryLight : "transparent" }]}>
+                <Text style={[hourStyles.optionText, { color: value === h ? colors.primary : colors.foreground }]}>{h}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const hourStyles = StyleSheet.create({
+  label: { fontSize: 11, fontFamily: "Inter_500Medium", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.6 },
+  selector: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderWidth: 1.5 },
+  selectorText: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+  dropdown: { position: "absolute", top: 70, left: 0, right: 0, zIndex: 99, borderWidth: 1, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 6 },
+  option: { paddingHorizontal: 14, paddingVertical: 10 },
+  optionText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+});
+
 export default function MerchantStoreScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, updateUser } = useAuth();
+
+  const existingHours = user?.businessHours || "";
+  const parsed = parseHours(existingHours);
+
   const [businessName, setBusinessName] = useState(user?.businessName || "");
   const [businessCategory, setBusinessCategory] = useState(user?.businessCategory || "");
   const [businessDescription, setBusinessDescription] = useState(user?.businessDescription || "");
+  const [openHour, setOpenHour] = useState(parsed.open);
+  const [closeHour, setCloseHour] = useState(parsed.close);
   const [editMode, setEditMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
     setLoading(true);
-    await updateUser({ businessName, businessCategory, businessDescription });
+    const businessHours = formatHours(openHour, closeHour);
+    await updateUser({ businessName, businessCategory, businessDescription, businessHours });
     setLoading(false);
     setEditMode(false);
     setSaved(true);
@@ -36,10 +98,11 @@ export default function MerchantStoreScreen() {
   };
 
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const displayHours = user?.businessHours || formatHours(openHour, closeHour) || "Belirtilmedi";
 
-  const services = [
-    { icon: "clock" as const, label: "Çalışma Saati", value: "09:00 - 21:00" },
-    { icon: "map-pin" as const, label: "Konum", value: "Site İçi" },
+  const infoItems = [
+    { icon: "clock" as const, label: "Çalışma Saati", value: displayHours },
+    { icon: "map-pin" as const, label: "Konum", value: user?.businessAddress || "Site İçi" },
     { icon: "phone" as const, label: "İletişim", value: user?.phone || "Belirtilmedi" },
   ];
 
@@ -61,7 +124,16 @@ export default function MerchantStoreScreen() {
           </View>
           <Button
             title={editMode ? "Vazgeç" : "Düzenle"}
-            onPress={() => setEditMode(!editMode)}
+            onPress={() => {
+              if (editMode) {
+                const p = parseHours(user?.businessHours || "");
+                setOpenHour(p.open); setCloseHour(p.close);
+                setBusinessName(user?.businessName || "");
+                setBusinessCategory(user?.businessCategory || "");
+                setBusinessDescription(user?.businessDescription || "");
+              }
+              setEditMode(!editMode);
+            }}
             variant={editMode ? "ghost" : "outline"}
             size="sm"
           />
@@ -81,6 +153,14 @@ export default function MerchantStoreScreen() {
               <Input label="İşletme Adı" value={businessName} onChangeText={setBusinessName} placeholder="İşletme adınız" leftIcon="briefcase" />
               <Input label="Kategori" value={businessCategory} onChangeText={setBusinessCategory} placeholder="örn. Market, Restoran..." leftIcon="tag" />
             </View>
+
+            <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 4 }]}>ÇALIŞMA SAATLERİ</Text>
+            <View style={[styles.hoursRow, { zIndex: 10 }]}>
+              <HourSelector label="Açılış" value={openHour} onChange={setOpenHour} />
+              <View style={[styles.hoursSep, { backgroundColor: colors.border }]} />
+              <HourSelector label="Kapanış" value={closeHour} onChange={setCloseHour} />
+            </View>
+
             <Text style={[styles.descLabel, { color: colors.mutedForeground }]}>Açıklama</Text>
             <View style={[styles.descBox, { borderColor: colors.border, borderRadius: colors.radius - 2, backgroundColor: colors.background }]}>
               <TextInput
@@ -113,8 +193,8 @@ export default function MerchantStoreScreen() {
 
             <View style={[styles.card, { backgroundColor: colors.card, borderRadius: colors.radius, borderColor: colors.border }]}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>İLETİŞİM BİLGİLERİ</Text>
-              {services.map((s, idx) => (
-                <View key={s.label} style={[styles.serviceRow, idx < services.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+              {infoItems.map((s, idx) => (
+                <View key={s.label} style={[styles.serviceRow, idx < infoItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <View style={[styles.serviceIcon, { backgroundColor: colors.primaryLight, borderRadius: 8 }]}>
                     <Feather name={s.icon} size={16} color={colors.primary} />
                   </View>
@@ -151,6 +231,8 @@ const styles = StyleSheet.create({
   editCard: { padding: 16, gap: 14, borderWidth: 1 },
   sectionLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8, textTransform: "uppercase" },
   fields: { gap: 12 },
+  hoursRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  hoursSep: { width: 1, height: 44, marginTop: 26 },
   descLabel: { fontSize: 13, fontFamily: "Inter_500Medium" },
   descBox: { borderWidth: 1.5 },
   descInput: { padding: 12, minHeight: 100, fontSize: 14, fontFamily: "Inter_400Regular" },

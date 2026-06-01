@@ -165,7 +165,7 @@ export default function AdminDashboard() {
           icon="shopping-bag"
           label="Esnaf Çağır"
           sub="Hizmet talebi oluştur"
-          onPress={() => router.push("/(admin)/notifications")}
+          onPress={() => router.push("/(admin)/vendors")}
           accent="#8b5cf6"
         />
         <ActionCard

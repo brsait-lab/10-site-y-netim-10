@@ -72,6 +72,7 @@ function ClassicAdminTabs() {
       <Tabs.Screen name="notifications" options={{ title: "Bildirim", tabBarBadge: unreadCount > 0 ? unreadCount : undefined, tabBarIcon: ({ color }) => isIOS ? <SymbolView name="bell.fill" tintColor={color} size={22} /> : <Feather name="bell" size={22} color={color} /> }} />
       <Tabs.Screen name="payments" options={{ title: "Ödemeler", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="creditcard.fill" tintColor={color} size={22} /> : <Feather name="credit-card" size={22} color={color} /> }} />
       <Tabs.Screen name="profile" options={{ title: "Profil", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.crop.circle.fill" tintColor={color} size={22} /> : <Feather name="user" size={22} color={color} /> }} />
+      <Tabs.Screen name="vendors" options={{ href: null }} />
     </Tabs>
   );
 }

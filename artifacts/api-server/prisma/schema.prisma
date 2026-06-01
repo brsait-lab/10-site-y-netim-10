@@ -42,6 +42,7 @@ model User {
   businessCategory    String?   @map("business_category")
   businessDescription String?   @map("business_description")
   businessAddress     String?   @map("business_address")
+  businessHours       String?   @map("business_hours")
   latitude            Float?
   longitude           Float?
   consentGiven        Boolean   @default(false) @map("consent_given")

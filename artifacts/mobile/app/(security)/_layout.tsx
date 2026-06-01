@@ -16,6 +16,7 @@ function NativeSecurityTabs() {
       <NativeTabs.Trigger name="packages"><Icon sf={{ default: "shippingbox", selected: "shippingbox.fill" }} /><Label>Kargolar</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="merchants"><Icon sf={{ default: "storefront", selected: "storefront.fill" }} /><Label>Esnaflar</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="notifications"><Icon sf={{ default: "bell", selected: "bell.fill" }} /><Label>Bildirimler</Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="chats"><Icon sf={{ default: "message.circle", selected: "message.circle.fill" }} /><Label>Sohbetler</Label></NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile"><Icon sf={{ default: "person.crop.circle", selected: "person.crop.circle.fill" }} /><Label>Profil</Label></NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -42,8 +43,8 @@ function ClassicSecurityTabs() {
       <Tabs.Screen name="packages" options={{ title: "Kargolar", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="shippingbox.fill" tintColor={color} size={22} /> : <Feather name="package" size={22} color={color} /> }} />
       <Tabs.Screen name="merchants" options={{ title: "Esnaflar", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="storefront.fill" tintColor={color} size={22} /> : <Feather name="shopping-bag" size={22} color={color} /> }} />
       <Tabs.Screen name="notifications" options={{ title: "Bildirimler", tabBarBadge: unreadCount > 0 ? unreadCount : undefined, tabBarIcon: ({ color }) => isIOS ? <SymbolView name="bell.fill" tintColor={color} size={22} /> : <Feather name="bell" size={22} color={color} /> }} />
+      <Tabs.Screen name="chats" options={{ title: "Sohbetler", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="message.circle.fill" tintColor={color} size={22} /> : <Feather name="message-circle" size={22} color={color} /> }} />
       <Tabs.Screen name="profile" options={{ title: "Profil", tabBarIcon: ({ color }) => isIOS ? <SymbolView name="person.crop.circle.fill" tintColor={color} size={22} /> : <Feather name="user" size={22} color={color} /> }} />
-      <Tabs.Screen name="chats" options={{ href: null }} />
     </Tabs>
   );
 }

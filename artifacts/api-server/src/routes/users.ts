@@ -71,6 +71,7 @@ router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
     businessCategory?: string;
     businessDescription?: string;
     businessAddress?: string;
+    businessHours?: string;
     latitude?: number;
     longitude?: number;
   };

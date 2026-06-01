@@ -46,6 +46,7 @@ export function toUserDto(u: User) {
     businessCategory: u.businessCategory ?? undefined,
     businessDescription: u.businessDescription ?? undefined,
     businessAddress: u.businessAddress ?? undefined,
+    businessHours: u.businessHours ?? undefined,
     latitude: u.latitude ?? undefined,
     longitude: u.longitude ?? undefined,
     consentGiven: u.consentGiven,

@@ -20,6 +20,7 @@ export interface UserDto {
   businessCategory?: string;
   businessDescription?: string;
   businessAddress?: string;
+  businessHours?: string;
   latitude?: number;
   longitude?: number;
   createdAt: string;
