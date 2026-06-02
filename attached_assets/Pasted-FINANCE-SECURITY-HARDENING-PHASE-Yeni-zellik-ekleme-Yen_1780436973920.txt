@@ -1,0 +1,175 @@
+FINANCE SECURITY HARDENING PHASE
+
+Yeni özellik ekleme.
+
+Yeni ekran ekleme.
+
+Yeni rol ekleme.
+
+Amaç:
+
+Mevcut finans sistemini üretim güvenliğine taşımak.
+
+────────────────────────────
+
+KRİTİK 1
+
+/pay endpoint incele.
+
+Resident kullanıcıların ödeme kaydını doğrudan:
+
+status = "paid"
+
+yapabilmesi engellensin.
+
+Kurallar:
+
+Resident:
+
+pending
+→ upload-receipt
+→ pending_approval
+
+akışını kullanmalı.
+
+Resident hiçbir endpoint üzerinden doğrudan paid durumuna geçememeli.
+
+Admin:
+
+manual-pay
+
+ile paid oluşturabilmeye devam etmeli.
+
+Backward compatibility korunacak.
+
+────────────────────────────
+
+KRİTİK 2
+
+Aşağıdaki endpointlerde tenant izolasyonu zorunlu hale getir:
+
+approve
+reject
+manual-pay
+upload-receipt
+pay
+
+Kontrol:
+
+existing.siteId === authUser.siteId
+
+değilse:
+
+403 Forbidden
+
+dön.
+
+UUID bilinmesi hiçbir zaman erişim hakkı vermemeli.
+
+────────────────────────────
+
+KRİTİK 3
+
+Duplicate koruması ekle.
+
+UserPayment için:
+
+(paymentId, unitKey)
+
+benzersiz olmalı.
+
+(paymentId, userId)
+
+benzersiz olmalı.
+
+Prisma unique constraint ekle.
+
+Migration oluştur.
+
+Mevcut verileri bozmadan uygula.
+
+────────────────────────────
+
+KRİTİK 4
+
+Aynı dönem aidatının ikinci kez oluşturulmasını engelle.
+
+Aynı site için:
+
+siteId
+type
+period
+
+kombinasyonu tekrar oluşturulamasın.
+
+Çözüm:
+
+uygulama katmanı kontrolü
+veya
+database unique constraint
+
+hangisi mevcut mimariye daha güvenliyse kullan.
+
+────────────────────────────
+
+KRİTİK 5
+
+Gerçek dekont depolama altyapısı hazırla.
+
+Cloudflare R2 tercih edilir.
+
+Beklenen mimari:
+
+Resident
+↓
+Presigned Upload URL
+↓
+R2 Upload
+↓
+receiptUrl
+↓
+pending_approval
+
+Dosya sistemi veya harici Google Drive linklerine bağımlılık kalmasın.
+
+────────────────────────────
+
+ORTA SEVİYE
+
+Resident GET /user-payments sonucunda:
+
+status = cancelled
+
+olan kayıtlar varsayılan olarak dönmesin.
+
+Sadece admin görüntüleyebilsin.
+
+────────────────────────────
+
+ORTA SEVİYE
+
+Payment tablosuna:
+
+(siteId, type)
+
+index ekle.
+
+Admin finans ekranı büyüyen veri setlerinde performans kaybetmesin.
+
+────────────────────────────
+
+RAPOR
+
+İş bitince raporla:
+
+* Kapatılan güvenlik açıkları
+* Yeni migrationlar
+* Unique constraintler
+* Tenant izolasyon doğrulaması
+* Dekont depolama mimarisi
+* Veri kaybı riskleri
+* Yeni production readiness skoru
+
+Amaç yeni özellik değil.
+
+Amaç finans sistemini üretim seviyesine çıkarmaktır.

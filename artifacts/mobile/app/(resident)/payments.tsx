@@ -5,12 +5,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useColors } from "@/hooks/useColors";
 import { useData, type UserPayment, type Payment, type Expense } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
-import { getSite, type SiteDto } from "@workspace/api-client-react";
+import { getSite, getPresignedUploadUrl, uploadFileToR2, type SiteDto } from "@workspace/api-client-react";
 
 type ResidentPayTab = "pending" | "paid" | "gider" | "personal";
+type UploadMode = "file" | "url";
 
 function statusBadge(status: string) {
   switch (status) {
@@ -37,6 +39,25 @@ const EXPENSE_CATEGORIES: Record<string, string> = {
   elevator: "Asansör", management: "Yönetim", other: "Diğer",
 };
 
+interface DekontModal {
+  open: boolean;
+  upId: string;
+  mode: UploadMode;
+  receiptUrl: string;
+  note: string;
+  pickedFileName?: string;
+  pickedFileUri?: string;
+  pickedMime?: string;
+  uploading: boolean;
+}
+
+const INITIAL_DEKONT: DekontModal = {
+  open: false, upId: "", mode: "file",
+  receiptUrl: "", note: "",
+  pickedFileName: undefined, pickedFileUri: undefined, pickedMime: undefined,
+  uploading: false,
+};
+
 export default function ResidentPayments() {
   const colors = useColors();
   const { user } = useAuth();
@@ -44,8 +65,8 @@ export default function ResidentPayments() {
 
   const [activeTab, setActiveTab] = useState<ResidentPayTab>("pending");
   const [site, setSite] = useState<SiteDto | null>(null);
-  const [dekontModal, setDekontModal] = useState({ open: false, upId: "", receiptUrl: "", note: "" });
-  const [loading, setLoading] = useState(false);
+  const [dekont, setDekont] = useState<DekontModal>(INITIAL_DEKONT);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (user?.siteId) {
@@ -56,21 +77,17 @@ export default function ResidentPayments() {
   const getPayment = useCallback((paymentId: string): Payment | undefined =>
     payments.find((p) => p.id === paymentId), [payments]);
 
-  // Filter: unit-based (aidat, gider, extra_expense) and personal_charge separately
   const unitTypes = ["aidat", "extra_expense", "gider"];
 
-  const pendingUps = userPayments.filter(
-    (up) => ["pending", "pending_approval", "rejected"].includes(up.status) && up.paymentId
-      ? (payments.find((p) => p.id === up.paymentId)?.type ?? "").match(/aidat|gider|extra_expense/) !== null
-      : true
-  ).filter((up) => {
+  const pendingUps = userPayments.filter((up) => {
     const p = getPayment(up.paymentId);
-    return p && (unitTypes.includes(p.type)) && !["cancelled"].includes(up.status);
+    return p && unitTypes.includes(p.type) && !["cancelled"].includes(up.status)
+      && ["pending", "pending_approval", "rejected"].includes(up.status);
   });
 
-  const paidUps = userPayments.filter((up) => up.status === "paid").filter((up) => {
+  const paidUps = userPayments.filter((up) => {
     const p = getPayment(up.paymentId);
-    return p && unitTypes.includes(p.type);
+    return p && unitTypes.includes(p.type) && up.status === "paid";
   });
 
   const personalUps = userPayments.filter((up) => {
@@ -93,18 +110,83 @@ export default function ResidentPayments() {
     return sum + (p?.amount ?? 0);
   }, 0);
 
-  async function doUploadReceipt() {
-    if (!dekontModal.receiptUrl.trim()) {
-      Alert.alert("Eksik", "Dekont URL'si giriniz."); return;
+  // ── Dosya seçici ──────────────────────────────────────────────────────────
+
+  async function handlePickFile() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("İzin gerekli", "Fotoğraf kütüphanesine erişim izni veriniz.");
+      return;
     }
-    setLoading(true);
-    try {
-      await uploadReceipt(dekontModal.upId, dekontModal.receiptUrl.trim(), dekontModal.note || undefined);
-      setDekontModal({ open: false, upId: "", receiptUrl: "", note: "" });
-      Alert.alert("Gönderildi", "Dekontunuz onay için yöneticiye iletildi.");
-    } catch (e: any) {
-      Alert.alert("Hata", e?.data?.message ?? "Dekont gönderilemedi.");
-    } finally { setLoading(false); }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
+      allowsEditing: false,
+      allowsMultipleSelection: false,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const mime = asset.mimeType ?? "image/jpeg";
+    const name = asset.fileName ?? `dekont-${Date.now()}.jpg`;
+    setDekont((s) => ({
+      ...s,
+      pickedFileUri: asset.uri,
+      pickedFileName: name,
+      pickedMime: mime,
+      receiptUrl: "",
+    }));
+  }
+
+  // ── R2 yükleme + receipt gönderme ─────────────────────────────────────────
+
+  async function doUploadReceipt() {
+    if (dekont.mode === "file") {
+      if (!dekont.pickedFileUri || !dekont.pickedMime) {
+        Alert.alert("Eksik", "Lütfen önce bir fotoğraf seçin.");
+        return;
+      }
+      setSubmitting(true);
+      setDekont((s) => ({ ...s, uploading: true }));
+      try {
+        const presigned = await getPresignedUploadUrl({
+          contentType: dekont.pickedMime,
+          fileName: dekont.pickedFileName,
+        });
+        await uploadFileToR2(presigned.uploadUrl, dekont.pickedFileUri, dekont.pickedMime);
+        await uploadReceipt(dekont.upId, presigned.fileUrl, dekont.note || undefined);
+        setDekont(INITIAL_DEKONT);
+        Alert.alert("Gönderildi", "Dekontunuz onay için yöneticiye iletildi.");
+      } catch (e: any) {
+        const code = e?.data?.code;
+        if (code === "R2_NOT_CONFIGURED") {
+          setDekont((s) => ({ ...s, mode: "url", uploading: false }));
+          Alert.alert(
+            "Dosya yükleme aktif değil",
+            "Şu an için dekont bağlantısı (URL) ile gönderim yapabilirsiniz.",
+          );
+        } else {
+          Alert.alert("Hata", e?.data?.message ?? "Dekont gönderilemedi.");
+        }
+      } finally {
+        setSubmitting(false);
+        setDekont((s) => ({ ...s, uploading: false }));
+      }
+    } else {
+      if (!dekont.receiptUrl.trim()) {
+        Alert.alert("Eksik", "Dekont URL'si giriniz.");
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await uploadReceipt(dekont.upId, dekont.receiptUrl.trim(), dekont.note || undefined);
+        setDekont(INITIAL_DEKONT);
+        Alert.alert("Gönderildi", "Dekontunuz onay için yöneticiye iletildi.");
+      } catch (e: any) {
+        Alert.alert("Hata", e?.data?.message ?? "Dekont gönderilemedi.");
+      } finally {
+        setSubmitting(false);
+      }
+    }
   }
 
   const TABS: { key: ResidentPayTab; label: string }[] = [
@@ -159,7 +241,8 @@ export default function ResidentPayments() {
                 </TouchableOpacity>
               </View>
             )}
-            <TouchableOpacity onPress={() => setDekontModal({ open: true, upId: up.id, receiptUrl: "", note: "" })}
+            <TouchableOpacity
+              onPress={() => setDekont({ ...INITIAL_DEKONT, open: true, upId: up.id, mode: "file" })}
               style={{ backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 12, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8 }}>
               <Feather name="upload" size={15} color="#fff" />
               <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 14 }}>Dekont Yükle</Text>
@@ -180,7 +263,8 @@ export default function ResidentPayments() {
                 <Text style={{ color: "#1d4ed8", fontSize: 11 }} numberOfLines={1}>{up.receiptUrl}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={() => setDekontModal({ open: true, upId: up.id, receiptUrl: "", note: "" })}
+            <TouchableOpacity
+              onPress={() => setDekont({ ...INITIAL_DEKONT, open: true, upId: up.id, mode: "file" })}
               style={{ marginTop: 4, paddingVertical: 6, alignItems: "center", borderWidth: 1, borderColor: "#1d4ed8", borderRadius: 8 }}>
               <Text style={{ color: "#1d4ed8", fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Yeni Dekont Yükle</Text>
             </TouchableOpacity>
@@ -194,7 +278,8 @@ export default function ResidentPayments() {
               <Text style={{ color: "#dc2626", fontSize: 13, fontFamily: "Inter_600SemiBold" }}>Dekont Reddedildi</Text>
             </View>
             {up.note && <Text style={{ color: "#dc2626", fontSize: 12 }}>Sebep: {up.note}</Text>}
-            <TouchableOpacity onPress={() => setDekontModal({ open: true, upId: up.id, receiptUrl: "", note: "" })}
+            <TouchableOpacity
+              onPress={() => setDekont({ ...INITIAL_DEKONT, open: true, upId: up.id, mode: "file" })}
               style={{ marginTop: 4, backgroundColor: "#dc2626", borderRadius: 8, paddingVertical: 8, alignItems: "center" }}>
               <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>Yeniden Yükle</Text>
             </TouchableOpacity>
@@ -240,7 +325,6 @@ export default function ResidentPayments() {
         <Text style={{ fontSize: 22, fontFamily: "Inter_700Bold", color: colors.text }}>Ödemelerim</Text>
       </View>
 
-      {/* Summary */}
       <View style={{ flexDirection: "row", marginHorizontal: 14, marginVertical: 8, gap: 10 }}>
         <View style={{ flex: 1, backgroundColor: "#fee2e2", borderRadius: 12, padding: 12 }}>
           <Text style={{ color: "#dc2626", fontSize: 11, fontFamily: "Inter_500Medium" }}>Toplam Borç</Text>
@@ -252,7 +336,6 @@ export default function ResidentPayments() {
         </View>
       </View>
 
-      {/* Tab Bar */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         style={{ maxHeight: 46 }} contentContainerStyle={{ paddingHorizontal: 12, alignItems: "center", gap: 6, flexDirection: "row" }}>
         {TABS.map((t) => {
@@ -267,7 +350,6 @@ export default function ResidentPayments() {
       </ScrollView>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 14, paddingBottom: 40 }}>
-
         {activeTab === "pending" && (
           pendingUps.length === 0
             ? <View style={{ paddingTop: 60, alignItems: "center" }}>
@@ -276,7 +358,6 @@ export default function ResidentPayments() {
             </View>
             : pendingUps.map((up) => <PaymentCard key={up.id} up={up} />)
         )}
-
         {activeTab === "paid" && (
           paidUps.length === 0
             ? <View style={{ paddingTop: 60, alignItems: "center" }}>
@@ -285,7 +366,6 @@ export default function ResidentPayments() {
             </View>
             : paidUps.map((up) => <PaymentCard key={up.id} up={up} />)
         )}
-
         {activeTab === "gider" && (
           <>
             {activeExpenses.length > 0 && (
@@ -304,7 +384,6 @@ export default function ResidentPayments() {
             }
           </>
         )}
-
         {activeTab === "personal" && (
           personalUps.length === 0
             ? <View style={{ paddingTop: 60, alignItems: "center" }}>
@@ -315,50 +394,102 @@ export default function ResidentPayments() {
         )}
       </ScrollView>
 
-      {/* Dekont Upload Modal */}
-      <Modal visible={dekontModal.open} transparent animationType="slide">
+      {/* ── Dekont Yükleme Modal ───────────────────────────────────────────── */}
+      <Modal visible={dekont.open} transparent animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
           <View style={{ flex: 1, backgroundColor: "#00000060", justifyContent: "flex-end" }}>
             <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 }}>
               <Text style={{ fontFamily: "Inter_700Bold", fontSize: 18, color: colors.text }}>Dekont Yükle</Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                Havale/EFT dekontunuzu Google Drive, iCloud veya başka bir platforma yükleyip bağlantısını buraya yapıştırın.
-              </Text>
 
-              <View>
-                <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium", marginBottom: 6 }}>Dekont Bağlantısı (URL)</Text>
-                <TextInput
-                  style={{ backgroundColor: colors.muted + "40", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text, fontSize: 14, fontFamily: "Inter_400Regular" }}
-                  placeholder="https://..."
-                  placeholderTextColor={colors.mutedForeground}
-                  value={dekontModal.receiptUrl}
-                  onChangeText={(v) => setDekontModal((s) => ({ ...s, receiptUrl: v }))}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                />
+              {/* Mod seçici */}
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {([
+                  { k: "file" as UploadMode, l: "Fotoğraf Seç", icon: "image" as const },
+                  { k: "url" as UploadMode, l: "Link Yapıştır", icon: "link" as const },
+                ] as const).map((m) => {
+                  const sel = dekont.mode === m.k;
+                  return (
+                    <TouchableOpacity
+                      key={m.k}
+                      onPress={() => setDekont((s) => ({ ...s, mode: m.k }))}
+                      style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 9, paddingVertical: 10, backgroundColor: sel ? colors.primary : colors.muted + "40", borderWidth: 1, borderColor: sel ? colors.primary : colors.border }}>
+                      <Feather name={m.icon} size={14} color={sel ? "#fff" : colors.mutedForeground} />
+                      <Text style={{ color: sel ? "#fff" : colors.mutedForeground, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>{m.l}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
+
+              {dekont.mode === "file" ? (
+                <TouchableOpacity
+                  onPress={handlePickFile}
+                  style={{ borderWidth: 2, borderColor: colors.border, borderStyle: "dashed", borderRadius: 12, padding: 20, alignItems: "center", gap: 8, backgroundColor: colors.muted + "20" }}>
+                  {dekont.pickedFileUri ? (
+                    <>
+                      <Feather name="check-circle" size={28} color="#16a34a" />
+                      <Text style={{ color: "#16a34a", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Fotoğraf Seçildi</Text>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12 }} numberOfLines={1}>{dekont.pickedFileName}</Text>
+                      <Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_500Medium" }}>Değiştirmek için dokunun</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Feather name="camera" size={28} color={colors.mutedForeground} />
+                      <Text style={{ color: colors.text, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Galeriden Seç</Text>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12, textAlign: "center" }}>
+                        Ödeme dekontunuzun fotoğrafını seçin{"\n"}(JPEG, PNG, WEBP · maks 10 MB)
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <View>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium", marginBottom: 6 }}>Dekont Bağlantısı (URL)</Text>
+                  <TextInput
+                    style={{ backgroundColor: colors.muted + "40", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text, fontSize: 14, fontFamily: "Inter_400Regular" }}
+                    placeholder="https://..."
+                    placeholderTextColor={colors.mutedForeground}
+                    value={dekont.receiptUrl}
+                    onChangeText={(v) => setDekont((s) => ({ ...s, receiptUrl: v }))}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                  />
+                </View>
+              )}
 
               <View>
                 <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium", marginBottom: 6 }}>Açıklama (opsiyonel)</Text>
                 <TextInput
-                  style={{ backgroundColor: colors.muted + "40", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text, fontSize: 14, fontFamily: "Inter_400Regular", height: 70, textAlignVertical: "top" }}
+                  style={{ backgroundColor: colors.muted + "40", borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, color: colors.text, fontSize: 14, fontFamily: "Inter_400Regular", height: 60, textAlignVertical: "top" }}
                   placeholder="Ödeme hakkında not ekleyin..."
                   placeholderTextColor={colors.mutedForeground}
-                  value={dekontModal.note}
-                  onChangeText={(v) => setDekontModal((s) => ({ ...s, note: v }))}
+                  value={dekont.note}
+                  onChangeText={(v) => setDekont((s) => ({ ...s, note: v }))}
                   multiline
                 />
               </View>
 
+              {dekont.uploading && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Yükleniyor...</Text>
+                </View>
+              )}
+
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <TouchableOpacity onPress={() => setDekontModal({ open: false, upId: "", receiptUrl: "", note: "" })}
+                <TouchableOpacity
+                  onPress={() => setDekont(INITIAL_DEKONT)}
                   style={{ flex: 1, borderRadius: 10, paddingVertical: 13, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
                   <Text style={{ color: colors.text, fontFamily: "Inter_600SemiBold" }}>İptal</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={doUploadReceipt} disabled={loading}
-                  style={{ flex: 1, borderRadius: 10, paddingVertical: 13, alignItems: "center", backgroundColor: colors.primary }}>
-                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold" }}>Gönder</Text>}
+                <TouchableOpacity
+                  onPress={doUploadReceipt}
+                  disabled={submitting}
+                  style={{ flex: 1, borderRadius: 10, paddingVertical: 13, alignItems: "center", backgroundColor: colors.primary, opacity: submitting ? 0.7 : 1 }}>
+                  {submitting
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={{ color: "#fff", fontFamily: "Inter_700Bold" }}>Gönder</Text>
+                  }
                 </TouchableOpacity>
               </View>
             </View>

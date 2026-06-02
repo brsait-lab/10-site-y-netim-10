@@ -118,6 +118,16 @@ async function getResidents(
   return prisma.user.findMany({ where: base, select });
 }
 
+// ── Tenant isolation guard ────────────────────────────────────────────────────
+// Ensures the userPayment belongs to the authenticated user's site.
+function assertSameSite(existingSiteId: string, authSiteId: string, res: Response): boolean {
+  if (existingSiteId !== authSiteId) {
+    res.status(403).json({ message: "Bu işleme erişim yetkiniz yok." });
+    return false;
+  }
+  return true;
+}
+
 // ── GET /payments ─────────────────────────────────────────────────────────────
 
 router.get("/payments", requireAuth, blockSecurity, async (req: Request, res: Response) => {
@@ -168,6 +178,20 @@ router.post("/payments", requireAuth, blockNonAdmin, async (req: Request, res: R
   const { year, month, period } = extractPeriod(body.dueDate);
   const targetBlocks = body.targetBlocks ?? [];
   const targetUserIds = body.targetUserIds ?? [];
+
+  // ── KRİTİK 4: Aynı dönem & type için duplicate engelle ──────────────────
+  if (period && isUnitBased(body.type)) {
+    const duplicate = await prisma.payment.findFirst({
+      where: { siteId, type: body.type, period, cancelledAt: null },
+      select: { id: true, title: true },
+    });
+    if (duplicate) {
+      res.status(409).json({
+        message: `"${body.type}" türünde ${period} dönemi için zaten bir ödeme mevcut: "${duplicate.title}". Aynı döneme ikinci ödeme oluşturulamaz.`,
+      });
+      return;
+    }
+  }
 
   const payment = await prisma.payment.create({
     data: {
@@ -254,11 +278,12 @@ router.get("/user-payments", requireAuth, blockSecurity, async (req: Request, re
     });
     const unitKey = currentUser ? buildUnitKey(currentUser) : null;
 
+    // ── ORTA: Cancelled kayıtları resident'a gösterme ────────────────────────
     const [unitPayments, personalPayments] = await Promise.all([
       unitKey
-        ? prisma.userPayment.findMany({ where: { unitKey, siteId } })
+        ? prisma.userPayment.findMany({ where: { unitKey, siteId, status: { not: "cancelled" } } })
         : Promise.resolve([]),
-      prisma.userPayment.findMany({ where: { userId, siteId } }),
+      prisma.userPayment.findMany({ where: { userId, siteId, status: { not: "cancelled" } } }),
     ]);
 
     const unitIds = new Set(unitPayments.map((u) => u.id));
@@ -301,6 +326,9 @@ router.get("/user-payments/stats", requireAuth, blockNonAdmin, async (req: Reque
 });
 
 // ── PATCH /user-payments/:id/pay — backward compat ───────────────────────────
+// KRİTİK 1: Resident bu endpoint'ten doğrudan "paid" yapamaz.
+//   → Resident için upload-receipt davranışı uygulanır (pending_approval).
+//   → Admin/non-resident için eski davranış korunur.
 
 router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
@@ -310,7 +338,11 @@ router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: R
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
 
+  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
+  if (!assertSameSite(existing.siteId, siteId, res)) return;
+
   if (role === "resident") {
+    // Resident erişim kontrolü
     if (existing.unitKey) {
       const cu = await prisma.user.findUnique({ where: { id: userId }, select: { block: true, tower: true, unitNo: true, villaNo: true } });
       if (buildUnitKey(cu ?? {}) !== existing.unitKey) {
@@ -319,8 +351,37 @@ router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: R
     } else if (existing.userId && existing.userId !== userId) {
       res.status(403).json({ message: "Yalnızca kendi ödemenizi yapabilirsiniz." }); return;
     }
+
+    // ── KRİTİK 1: Resident doğrudan "paid" yapamaz → upload-receipt akışına yönlendir
+    if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }
+    if (existing.status === "cancelled") { res.status(400).json({ message: "İptal edilmiş aidat ödenemez." }); return; }
+
+    if (!body.receiptUrl) {
+      res.status(400).json({
+        message: "Ödeme onayı için dekont yüklenmesi zorunludur. Lütfen 'Dekont Yükle' butonunu kullanın.",
+      });
+      return;
+    }
+
+    const updated = await prisma.userPayment.update({
+      where: { id },
+      data: {
+        receiptUrl: body.receiptUrl,
+        note: body.note ?? existing.note,
+        paidByUserId: userId,
+        status: "pending_approval",
+      },
+    });
+
+    await addAuditLog({
+      siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id,
+      action: "receipt_uploaded", performedBy: userId, note: body.receiptUrl,
+    });
+    res.json(toUserPaymentDto(updated));
+    return;
   }
 
+  // Admin / non-resident: eski davranış korunur
   if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }
   if (existing.status === "cancelled") { res.status(400).json({ message: "İptal edilmiş aidat ödenemez." }); return; }
 
@@ -331,7 +392,7 @@ router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: R
       paymentMethod: body.paymentMethod ?? "manual",
       note: body.note ?? existing.note,
       receiptUrl: body.receiptUrl ?? existing.receiptUrl,
-      ...(role !== "resident" ? { approvedBy: userId, approvedAt: new Date() } : {}),
+      approvedBy: userId, approvedAt: new Date(),
     },
   });
 
@@ -343,13 +404,16 @@ router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: R
 
 router.patch("/user-payments/:id/upload-receipt", requireAuth, blockSecurity, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId, role } = (req as AuthRequest).authUser;
+  const { userId, role, siteId } = (req as AuthRequest).authUser;
   const body = req.body as { receiptUrl: string; note?: string };
 
   if (!body.receiptUrl) { res.status(400).json({ message: "receiptUrl gereklidir." }); return; }
 
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
+
+  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
+  if (!assertSameSite(existing.siteId, siteId, res)) return;
 
   if (role === "resident") {
     if (existing.unitKey) {
@@ -378,15 +442,18 @@ router.patch("/user-payments/:id/upload-receipt", requireAuth, blockSecurity, as
 
 router.patch("/user-payments/:id/approve", requireAuth, blockNonAdmin, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId } = (req as AuthRequest).authUser;
+  const { userId, siteId } = (req as AuthRequest).authUser;
   const body = req.body as { note?: string };
 
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
+
+  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
+  if (!assertSameSite(existing.siteId, siteId, res)) return;
+
   if (existing.status !== "pending_approval") {
     res.status(400).json({ message: "Yalnızca onay bekleyen dekontlar onaylanabilir." }); return;
   }
-  if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }
 
   const updated = await prisma.userPayment.update({
     where: { id },
@@ -406,11 +473,15 @@ router.patch("/user-payments/:id/approve", requireAuth, blockNonAdmin, async (re
 
 router.patch("/user-payments/:id/reject", requireAuth, blockNonAdmin, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId } = (req as AuthRequest).authUser;
+  const { userId, siteId } = (req as AuthRequest).authUser;
   const body = req.body as { note?: string };
 
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
+
+  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
+  if (!assertSameSite(existing.siteId, siteId, res)) return;
+
   if (existing.status !== "pending_approval") {
     res.status(400).json({ message: "Yalnızca onay bekleyen dekontlar reddedilebilir." }); return;
   }
@@ -428,13 +499,17 @@ router.patch("/user-payments/:id/reject", requireAuth, blockNonAdmin, async (req
 
 router.patch("/user-payments/:id/manual-pay", requireAuth, blockNonAdmin, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId } = (req as AuthRequest).authUser;
+  const { userId, siteId } = (req as AuthRequest).authUser;
   const body = req.body as { paymentMethod: string; note?: string };
 
   if (!body.paymentMethod) { res.status(400).json({ message: "paymentMethod gereklidir." }); return; }
 
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
+
+  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
+  if (!assertSameSite(existing.siteId, siteId, res)) return;
+
   if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }
   if (existing.status === "cancelled") { res.status(400).json({ message: "İptal edilmiş aidat işlenemiyor." }); return; }
 

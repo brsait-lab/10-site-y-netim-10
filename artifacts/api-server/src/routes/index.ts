@@ -11,6 +11,7 @@ import packagesRouter from "./packages.js";
 import chatsRouter from "./chats.js";
 import vendorsRouter from "./vendors.js";
 import adminTransfersRouter from "./admin-transfers.js";
+import uploadRouter from "./upload.js";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(packagesRouter);
 router.use(chatsRouter);
 router.use(vendorsRouter);
 router.use(adminTransfersRouter);
+router.use(uploadRouter);
 
 export default router;

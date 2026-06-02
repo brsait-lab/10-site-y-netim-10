@@ -118,6 +118,7 @@ model Payment {
   @@index([siteId, createdAt(sort: Desc)])
   @@index([siteId, cancelledAt])
   @@index([siteId, year, month])
+  @@index([siteId, type])
   @@map("payments")
 }
 

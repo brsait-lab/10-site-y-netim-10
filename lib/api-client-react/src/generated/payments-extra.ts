@@ -84,3 +84,43 @@ export const getSite = async (
   options?: RequestInit,
 ): Promise<SiteDto> =>
   customFetch<SiteDto>(`/api/sites/${id}`, options);
+
+// ── KRİTİK 5: R2 Presigned Upload ────────────────────────────────────────────
+
+export interface PresignedUploadRequest {
+  contentType: string;
+  fileSizeBytes?: number;
+  fileName?: string;
+}
+
+export interface PresignedUploadResponse {
+  uploadUrl: string;
+  fileUrl: string;
+  expiresIn: number;
+  objectKey: string;
+}
+
+export const getPresignedUploadUrl = async (
+  data: PresignedUploadRequest,
+  options?: RequestInit,
+): Promise<PresignedUploadResponse> =>
+  customFetch<PresignedUploadResponse>(`/api/upload/presigned-url`, {
+    method: "POST", body: JSON.stringify(data), ...options,
+  });
+
+export const uploadFileToR2 = async (
+  uploadUrl: string,
+  fileUri: string,
+  contentType: string,
+): Promise<void> => {
+  const response = await fetch(fileUri);
+  const blob = await response.blob();
+  const result = await fetch(uploadUrl, {
+    method: "PUT",
+    body: blob,
+    headers: { "Content-Type": contentType },
+  });
+  if (!result.ok) {
+    throw new Error(`R2 upload failed: ${result.status}`);
+  }
+};
