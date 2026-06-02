@@ -1,0 +1,149 @@
+1. Mevcut Yapının Kök Sorunu
+UserPayment tablosunun birincil anahtarı userId'dir — yani her kayıt bir kişiye aittir. Daire kavramı şemada hiçbir yerde "ödeme birimi" olarak temsil edilmemektedir.
+
+Şu an:  Payment (1) ──→ UserPayment (N per USER)
+Hedef:  Payment (1) ──→ UnitPayment (N per UNIT)  +  UserPayment (N per USER for gider)
+
+User modelinde daire bilgisi mevcut (unitNo, block, tower, villaNo) ama bunlar ödeme tablosuna hiç bağlanmamış.
+
+2. Değişmesi Gereken Tablolar
+Tablo	Değişim	Neden
+user_payments	Ana değişiklik	userId yerine unitKey + paidByUserId
+payments	Yok	Mevcut yapı yeterli
+users	Yok	unitNo/block zaten var
+Diğer tüm tablolar	Yok	Vendor, chat, package etkilenmez
+Tek tablo değişiyor: user_payments
+
+3. Önerilen Yeni UserPayment Yapısı
+UserPayment (mevcut)         UserPayment (yeni)
+────────────────────         ───────────────────────────────
+id          String           id             String
+paymentId   String           paymentId      String
+userId      String    ──→    userId         String?      ← nullable
+siteId      String           siteId         String
+status      String           status         String
+paidAt      DateTime?        paidAt         DateTime?
+note        String?          note           String?
+receiptUrl  String?          receiptUrl     String?
+                             unitKey        String?      ← YENİ
+                             paidByUserId   String?      ← YENİ
+
+unitKey: Dairenin string kimliği. Kullanıcının block + unitNo alanlarından türetilir.
+
+block="A",  unitNo="12"   →  unitKey = "A-12"
+block=null, unitNo="5"    →  unitKey = "5"
+villaNo="7"               →  unitKey = "villa-7"
+tower="K1", unitNo="3"    →  unitKey = "K1-3"
+
+paidByUserId: Daire adına ödemeyi fiilen yapan kullanıcının ID'si. Audit trail sağlar.
+
+userId nullable: Aidat tipi kayıtlarda null olur (dairenin sahibi kim?), gider tipi kayıtlarda mevcut gibi dolu kalır.
+
+4. Tip × Davranış Matrisi
+Ödeme Tipi	Oluşturma	UserPayment owner	Sorgulama
+aidat	Benzersiz unitKey başına 1 kayıt	userId=null, unitKey="A-12"	WHERE unitKey IN [resident'ın unitKey'leri]
+gider	Her aktif sakin için 1 kayıt (değişmez)	userId=residentId, unitKey=null	WHERE userId = ? (mevcut gibi)
+Kural 6 (kullanıcı bazlı ek gider desteği) korunuyor — ek giderlerde davranış hiç değişmiyor.
+
+5. unitKey Türetme Fonksiyonu
+function buildUnitKey(user: {
+  block?: string | null;
+  tower?: string | null;
+  unitNo?: string | null;
+  villaNo?: string | null;
+}): string | null {
+  if (user.unitNo) {
+    const prefix = user.block ?? user.tower ?? null;
+    return prefix ? `${prefix}-${user.unitNo}` : user.unitNo;
+  }
+  if (user.villaNo) return `villa-${user.villaNo}`;
+  return null;  // unitKey üretilemeyen kullanıcı aidat oluşturmaya dahil edilmez
+}
+
+6. Oluşturma Akışı (Aidat)
+POST /payments (type=aidat)
+    ↓
+Tüm aktif sakinleri çek (mevcut gibi, blok/kullanıcı filtresi destekli)
+    ↓
+Her sakin için buildUnitKey() çalıştır
+    ↓
+Benzersiz unitKey'leri de-duplicate et  ← KRİTİK YENİLİK
+    ↓
+Her benzersiz unitKey için 1 UserPayment oluştur
+    { paymentId, unitKey, userId: null, siteId, status: "pending" }
+    ↓
+Sonuç: A-12 dairesinde 3 kişi varsa → 1 UserPayment kaydı
+
+7. Sorgulama Akışı (Sakin)
+GET /user-payments (role=resident)
+    ├── Sakin'in unitKey'ini hesapla: buildUnitKey(user)
+    ├── aidat:  WHERE unitKey = sakin'in unitKey'i
+    └── gider:  WHERE userId  = sakin'in id'si
+    ↓
+Union → sakin kendi dairesinin aidatını görür
+
+8. Ödeme Akışı
+PATCH /user-payments/:id/pay
+    ├── Body: { note?, receiptUrl? }
+    ├── paidByUserId = req.userId       ← kim ödedi (audit)
+    ├── status: "pending" → "paid"
+    └── Aynı anda daire arkadaşları da
+        aynı kaydı gördüğü için anında "ödendi" görürler
+
+9. En Güvenli Migration Stratejisi
+3 aşamalı, her aşama ayrı migration:
+
+AŞAMA 1 — Additive (sıfır risk)
+  ALTER TABLE user_payments
+    ADD COLUMN unit_key TEXT,
+    ADD COLUMN paid_by_user_id TEXT,
+    ALTER COLUMN user_id DROP NOT NULL;
+  → Mevcut veriler dokunulmadan kalır. Yeni alanlar null.
+AŞAMA 2 — Backfill (mevcut aidat kayıtları)
+  UPDATE user_payments up
+  SET unit_key = (
+    SELECT
+      CASE
+        WHEN u.block IS NOT NULL AND u.unit_no IS NOT NULL
+          THEN u.block || '-' || u.unit_no
+        WHEN u.unit_no IS NOT NULL
+          THEN u.unit_no
+        WHEN u.villa_no IS NOT NULL
+          THEN 'villa-' || u.villa_no
+      END
+    FROM users u WHERE u.id = up.user_id
+  )
+  WHERE up.user_id IS NOT NULL;
+  → Tüm mevcut kayıtlara unitKey atanır.
+AŞAMA 3 — Deduplicate (aidat tipi için)
+  Aynı (paymentId, unitKey) kombinasyonundan birden fazla
+  kayıt varsa:
+    - "paid" olan varsa → onu tut, diğerlerini "cancelled" yap
+    - Hiç "paid" yoksa → en eski "pending"i tut, diğerlerini "cancelled" yap
+  → Mevcut ödeme geçmişi korunur (kural 3).
+
+10. Eski Veri Koruma Garantisi
+Kural	Nasıl korunuyor
+Mevcut ödeme geçmişi (kural 3)	Backfill + dedup → "paid" kayıtlar asla silinmiyor
+Soft delete yapısı (kural 4)	cancelledAt / status: "cancelled" mantığı değişmiyor
+Blok bazlı aidat desteği (kural 5)	targetBlocks → grupla → unitKey bazlı oluştur
+Kullanıcı bazlı gider (kural 6)	type=gider kod yoluna dokunulmaz
+Tenant izolasyonu (kural 1)	siteId tüm sorgularda kalır
+Vendor sistemi (kural 2)	Hiçbir payment değişikliği vendor tablolarına dokunmaz
+11. API Değişiklik Özeti
+Endpoint	Değişim
+POST /payments	aidat için createMany → unitKey bazlı de-dup
+GET /user-payments (resident)	userId → unitKey sorgusuna geçiş (aidat)
+GET /user-payments (admin/security)	Değişmez, siteId ile tüm kayıtlar
+PATCH /user-payments/:id/pay	paidByUserId = req.userId eklenir
+GET /user-payments/stats	Değişmez
+Diğer tüm endpoint'ler	Etkilenmez
+12. Mobile UI Değişiklik Özeti
+Ekran	Değişim
+Admin payments.tsx	Progress bar "X/Y daire ödedi" gösterir; unitKey label'ı ("A-12")
+Resident payments.tsx	Sorgulama unitKey bazlı; "Daireniz adına ödendi" mesajı
+Resident kart	paidByUserId ile "Ahmet tarafından ödendi" bilgisi gösterilebilir
+Özet
+1 tablo değişiyor (user_payments), 2 alan ekleniyor (unit_key, paid_by_user_id), 1 alan nullable yapılıyor (user_id).
+Migration 3 aşamalı, her aşama geri alınabilir ve mevcut veriyi korur.
+Gider tipi ödemeler hiç değişmiyor.

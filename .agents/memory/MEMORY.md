@@ -1,0 +1,1 @@
+- [Finance overhaul architecture](finance-overhaul.md) — unit-based aidat/expense system; buildUnitKey, isUnitBased, new models (PaymentAuditLog, Expense), new statuses (pending_approval, cancelled)

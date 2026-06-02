@@ -89,6 +89,10 @@ export interface SiteDto {
   name: string;
   address: string;
   adminId: string;
+  settlementType?: string;
+  bankName?: string;
+  accountHolder?: string;
+  iban?: string;
   createdAt: string;
 }
 
@@ -125,6 +129,13 @@ export interface PaymentDto {
   dueDate: string;
   type: string;
   description?: string;
+  targetBlocks?: string[];
+  targetUserIds?: string[];
+  createdBy?: string;
+  cancelledAt?: string | null;
+  year?: number;
+  month?: number;
+  period?: string;
   createdAt: string;
 }
 
@@ -135,15 +146,76 @@ export interface CreatePaymentRequest {
   dueDate: string;
   type: string;
   description?: string;
+  targetBlocks?: string[];
+  targetUserIds?: string[];
 }
 
 export interface UserPaymentDto {
   id: string;
   paymentId: string;
-  userId: string;
+  userId?: string;
+  unitKey?: string;
   siteId: string;
   status: string;
-  paidAt?: string;
+  paidAt?: string | null;
+  paidByUserId?: string;
+  paymentMethod?: string;
+  approvedBy?: string;
+  approvedAt?: string | null;
+  note?: string;
+  receiptUrl?: string;
+}
+
+export interface UploadReceiptRequest {
+  receiptUrl: string;
+  note?: string;
+}
+
+export interface ManualPayRequest {
+  paymentMethod: string;
+  note?: string;
+}
+
+export interface ApproveRejectRequest {
+  note?: string;
+}
+
+export interface ExpenseDto {
+  id: string;
+  siteId: string;
+  title: string;
+  description: string;
+  amount: number;
+  date: string;
+  category: string;
+  documentUrl?: string;
+  year?: number;
+  month?: number;
+  period?: string;
+  createdBy: string;
+  cancelledAt?: string | null;
+  createdAt: string;
+}
+
+export interface CreateExpenseRequest {
+  title: string;
+  description?: string;
+  amount: number;
+  date: string;
+  category: string;
+  documentUrl?: string;
+}
+
+export interface PaymentAuditLogDto {
+  id: string;
+  siteId: string;
+  paymentId?: string;
+  userPaymentId?: string;
+  action: string;
+  performedBy: string;
+  performedByName: string;
+  note?: string;
+  createdAt: string;
 }
 
 export interface ChatDto {
@@ -280,4 +352,3 @@ siteId?: string;
 export type GetMessagesParams = {
 chatId?: string;
 };
-

@@ -64,9 +64,14 @@ router.get("/sites/:id", requireAuth, async (req: Request, res: Response) => {
     createdAt: site.createdAt.toISOString(),
   };
 
-  // Only the admin of this site sees joinCode and decrypted bank details
+  // Admin sees joinCode + full bank details
   if (role === "admin" && siteId === id) {
     dto.joinCode = site.joinCode;
+    dto.bankName = site.bankName ?? undefined;
+    dto.accountHolder = site.accountHolder ?? undefined;
+    dto.iban = decryptIban(site.iban);
+  } else if (role === "resident" && siteId === id && site.iban) {
+    // Residents see bank info for payment (IBAN display), no joinCode
     dto.bankName = site.bankName ?? undefined;
     dto.accountHolder = site.accountHolder ?? undefined;
     dto.iban = decryptIban(site.iban);

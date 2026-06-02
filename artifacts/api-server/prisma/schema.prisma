@@ -108,29 +108,77 @@ model Payment {
   description   String?
   targetBlocks  String[]  @default([]) @map("target_blocks")
   targetUserIds String[]  @default([]) @map("target_user_ids")
+  year          Int?
+  month         Int?
+  period        String?
   createdBy     String    @default("") @map("created_by")
   cancelledAt   DateTime? @map("cancelled_at")
   createdAt     DateTime  @default(now()) @map("created_at")
 
   @@index([siteId, createdAt(sort: Desc)])
   @@index([siteId, cancelledAt])
+  @@index([siteId, year, month])
   @@map("payments")
 }
 
 model UserPayment {
-  id         String    @id @default(uuid())
-  paymentId  String    @map("payment_id")
-  userId     String    @map("user_id")
-  siteId     String    @map("site_id")
-  status     String    @default("pending")
-  paidAt     DateTime? @map("paid_at")
-  note       String?
-  receiptUrl String?   @map("receipt_url")
+  id            String    @id @default(uuid())
+  paymentId     String    @map("payment_id")
+  userId        String?   @map("user_id")
+  unitKey       String?   @map("unit_key")
+  siteId        String    @map("site_id")
+  status        String    @default("pending")
+  paidAt        DateTime? @map("paid_at")
+  paidByUserId  String?   @map("paid_by_user_id")
+  paymentMethod String?   @map("payment_method")
+  approvedBy    String?   @map("approved_by")
+  approvedAt    DateTime? @map("approved_at")
+  note          String?
+  receiptUrl    String?   @map("receipt_url")
 
   @@index([paymentId])
   @@index([userId])
+  @@index([unitKey, siteId])
   @@index([siteId, status])
   @@map("user_payments")
+}
+
+model PaymentAuditLog {
+  id              String   @id @default(uuid())
+  siteId          String   @map("site_id")
+  paymentId       String?  @map("payment_id")
+  userPaymentId   String?  @map("user_payment_id")
+  action          String
+  performedBy     String   @map("performed_by")
+  performedByName String   @map("performed_by_name")
+  note            String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([siteId, createdAt(sort: Desc)])
+  @@index([paymentId])
+  @@index([userPaymentId])
+  @@map("payment_audit_logs")
+}
+
+model Expense {
+  id          String    @id @default(uuid())
+  siteId      String    @map("site_id")
+  title       String
+  description String    @default("")
+  amount      Float
+  date        String
+  category    String
+  documentUrl String?   @map("document_url")
+  year        Int?
+  month       Int?
+  period      String?
+  createdBy   String    @map("created_by")
+  cancelledAt DateTime? @map("cancelled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([siteId, createdAt(sort: Desc)])
+  @@index([siteId, year, month])
+  @@map("expenses")
 }
 
 model Chat {

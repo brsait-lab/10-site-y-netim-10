@@ -1,0 +1,509 @@
+FİNANS, AİDAT VE ŞEFFAFLIK SİSTEMİ – ÜRETİM HAZIR HALE GETİRME
+
+Mevcut mimari korunacak.
+
+Tenant izolasyonu korunacak.
+Vendor sistemi etkilenmeyecek.
+Geriye dönük uyumluluk korunacak.
+
+Ama finans modülü gerçek site yönetimi kullanımına uygun hale getirilecek.
+
+────────────────────────────
+
+TEMEL PRENSİP
+
+Aidat kullanıcı bazlı değil,
+DAİRE BAZLI çalışacak.
+
+Örnek:
+
+A Blok 12 numaralı dairede:
+
+* Ahmet
+* Ayşe
+* Mehmet
+
+aktif kullanıcı olarak bulunabilir.
+
+Aidat oluşturulduğunda:
+
+3 ayrı borç oluşmayacak.
+
+1 adet daire aidatı oluşacak.
+
+Dairedeki tüm kullanıcılar aynı aidat kaydını görecek.
+
+Bir kişi ödeme yaptığında:
+
+tüm daire kullanıcılarında
+
+ÖDENDİ
+
+olarak görünmeli.
+
+────────────────────────────
+
+ÖDEME TÜRLERİ
+
+1. Aidat
+
+Standart aylık site aidatı.
+
+Karşıladığı giderler:
+
+* Güvenlik
+* Temizlik
+* Bahçe
+* Ortak alan elektrik
+* Ortak alan su
+* Yönetim giderleri
+* Rutin bakım
+
+Aidat daire bazlıdır.
+
+────────────────────────────
+
+2. Olağanüstü Gider
+
+extra_expense
+
+Örnek:
+
+* Asansör motoru değişimi
+* Çatı onarımı
+* Kamera sistemi yenileme
+* Yangın sistemi
+* Su deposu
+
+Aidattan ayrı raporlanır.
+
+Daire bazlı tahsil edilir.
+
+────────────────────────────
+
+3. Kişisel Borç
+
+personal_charge
+
+Örnek:
+
+* Hasar bedeli
+* Kart kaybı
+* Ceza
+* Kişiye özel ücret
+
+Kullanıcı bazlıdır.
+
+Sadece ilgili kullanıcı görür.
+
+────────────────────────────
+
+USER PAYMENT MİMARİSİ
+
+UserPayment tablosuna ekle:
+
+unitKey
+paidByUserId
+paymentMethod
+approvedBy
+approvedAt
+
+paymentMethod:
+
+* bank_transfer
+* cash
+* manual
+* online
+
+userId nullable hale getirilebilir.
+
+Aidat ve olağanüstü giderlerde:
+
+unitKey kullanılsın.
+
+Kişisel borçlarda:
+
+userId kullanılmaya devam etsin.
+
+────────────────────────────
+
+UNIT KEY
+
+Daire kimliği üret:
+
+A-12
+B-7
+K1-15
+villa-4
+
+gibi.
+
+Aidat kayıtları unitKey bazlı oluşturulsun.
+
+Aynı daire için aynı aidat döneminde ikinci kayıt oluşmasın.
+
+────────────────────────────
+
+ÖDEME STATÜLERİ
+
+Desteklenen statüler:
+
+pending
+pending_approval
+paid
+rejected
+cancelled
+
+Akış:
+
+pending
+↓
+pending_approval
+↓
+paid
+
+veya
+
+pending
+↓
+pending_approval
+↓
+rejected
+
+Nakit tahsilat:
+
+pending
+↓
+paid
+
+────────────────────────────
+
+DEKONT YÜKLEME
+
+receiptUrl alanı uçtan uca kullanılabilir hale getirilsin.
+
+Sakin:
+
+* dekont yükler
+* açıklama ekler
+
+Sonuç:
+
+pending
+↓
+pending_approval
+
+Admin:
+
+* dekont görüntüler
+* onaylar
+* reddeder
+
+────────────────────────────
+
+MANUEL TAHSİLAT
+
+Yönetici:
+
+Ödendi Olarak İşaretle
+
+işlemi yapabilsin.
+
+Kullanım:
+
+* Nakit ödeme
+* Elden tahsilat
+* Banka hareketinden doğrulama
+
+Durum:
+
+paid
+
+olarak güncellenir.
+
+approvedBy
+approvedAt
+
+kaydedilir.
+
+────────────────────────────
+
+DIŞARIDAN ÖDEME SENARYOLARI
+
+Sistem yalnızca uygulama içi ödeme varsayımıyla çalışmamalı.
+
+Desteklenecek yöntemler:
+
+* Havale
+* EFT
+* ATM ödemesi
+* Şubeden ödeme
+* Nakit ödeme
+* Yönetici manuel onayı
+* Gelecekte online ödeme
+
+Online ödeme altyapısı şimdilik eklenmeyecek.
+
+Ama paymentMethod alanı buna hazır olacak.
+
+────────────────────────────
+
+PAYMENT AUDIT LOG
+
+Yeni tablo:
+
+payment_audit_logs
+
+Örnek kayıtlar:
+
+Aidat oluşturuldu
+Dekont yüklendi
+Onaylandı
+Reddedildi
+Manuel tahsil edildi
+Nakit tahsil edildi
+İptal edildi
+
+Her kayıt için:
+
+* kim yaptı
+* ne yaptı
+* ne zaman yaptı
+
+saklanmalı.
+
+Hiçbir audit kaydı silinmemeli.
+
+────────────────────────────
+
+GÜVENLİK YETKİLERİ
+
+Güvenlik personeli:
+
+* Aidat göremez
+* Tahsilat göremez
+* Finans raporu göremez
+* Ödeme değiştiremez
+* Onay veremez
+
+Finans modülüne erişemez.
+
+────────────────────────────
+
+SAKİN ÖDEME EKRANI
+
+Göster:
+
+* Borç tutarı
+* Son ödeme tarihi
+* Site IBAN bilgisi
+* Açıklama
+* Dekont yükleme
+
+Gösterme:
+
+* Muhasebe detayları
+* Yönetici notları
+* Ham finans kayıtları
+
+────────────────────────────
+
+YÖNETİCİ FİNANS EKRANI
+
+Yönetici:
+
+* Aidat oluşturabilir
+* Ek gider oluşturabilir
+* Kişisel borç oluşturabilir
+* Dekont inceleyebilir
+* Onay verebilir
+* Red verebilir
+* Manuel tahsilat işleyebilir
+* Gelir/Gider girebilir
+* Rapor alabilir
+
+────────────────────────────
+
+HEDEFLEME
+
+Aidat oluştururken:
+
+1. Tüm Site
+2. Blok Bazlı
+3. Kullanıcı Bazlı
+
+UI üzerinden seçilebilsin.
+
+Mevcut API desteği kullanılabilir.
+
+────────────────────────────
+
+GELİR / GİDER MODÜLÜ
+
+Kategori desteği:
+
+* Güvenlik
+* Temizlik
+* Elektrik
+* Su
+* Bahçe
+* Bakım
+* Asansör
+* Yönetim
+* Diğer
+
+Her kayıt:
+
+* Başlık
+* Açıklama
+* Tutar
+* Tarih
+* Kategori
+
+alanlarına sahip olsun.
+
+Opsiyonel:
+
+* PDF
+* Fatura görseli
+* Belge
+
+eklenebilsin.
+
+────────────────────────────
+
+SAKİN ŞEFFAFLIK EKRANI
+
+Yeni ekran:
+
+Gelir / Gider Özeti
+
+Örnek:
+
+Toplanan Aidat
+Toplanan Ek Gider
+Toplam Gelir
+Toplam Harcama
+Kalan Bakiye
+
+Kategori bazlı dağılım:
+
+* Güvenlik
+* Temizlik
+* Elektrik
+* Su
+* Bahçe
+* Bakım
+* Asansör
+* Yönetim
+* Diğer
+
+gösterilsin.
+
+────────────────────────────
+
+YIL SONU VE DÖNEM YÖNETİMİ
+
+Tüm finans kayıtları:
+
+* yıl
+* ay
+* dönem
+
+bilgisi taşısın.
+
+Örnek:
+
+2026 / Ocak
+2026 / Şubat
+2026 / Mart
+
+Yıl sonunda:
+
+hiçbir veri silinmesin.
+
+Yeni dönem açılsın.
+
+Eski dönemler:
+
+* görüntülenebilsin
+* filtrelenebilsin
+* raporlanabilsin
+
+────────────────────────────
+
+BORÇ DEVRİ
+
+Ödenmemiş aidatlar:
+
+yeni döneme taşınsın.
+
+Örnek:
+
+2026 Aralık Aidatı
+ödenmedi
+
+2027 yılında halen borç olarak görünmeli.
+
+────────────────────────────
+
+YÖNETİCİ DEĞİŞİMİ
+
+Yönetici değiştiğinde:
+
+* finans kayıtları korunacak
+* aidatlar korunacak
+* dekontlar korunacak
+* audit loglar korunacak
+* raporlar korunacak
+
+Veri kaybı oluşmayacak.
+
+────────────────────────────
+
+SOFT DELETE
+
+Hiçbir finansal kayıt fiziksel olarak silinmeyecek.
+
+Silme işlemleri:
+
+cancelled
+deletedAt
+
+mantığı ile çalışacak.
+
+────────────────────────────
+
+VERİ TUTARLILIĞI KONTROLLERİ
+
+Kontrol et:
+
+* Aynı daire için aynı dönemde ikinci aidat oluşturulabiliyor mu?
+* Aynı ödeme ikinci kez onaylanabiliyor mu?
+* Aynı dekont tekrar kullanılabiliyor mu?
+* Aynı aidat dönemi tekrar üretilebiliyor mu?
+* Yönetici değişiminde veri kaybı oluşuyor mu?
+
+Riskleri raporla.
+
+────────────────────────────
+
+İŞ SONU RAPORU
+
+Raporla:
+
+* Yeni tablolar
+* Yeni alanlar
+* Yeni endpointler
+* Daire bazlı aidat mantığı
+* Dekont sistemi
+* Audit log sistemi
+* Dışarıdan ödeme akışları
+* Gelir/Gider sistemi
+* Şeffaflık ekranı
+* Yıl sonu davranışı
+* Borç devri davranışı
+* Yönetici değişimi davranışı
+* Veri tutarlılığı önlemleri
+* Geriye dönük uyumluluk
+* Olası riskler

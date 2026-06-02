@@ -14,12 +14,22 @@ import {
   sendMessage as apiSendMessage,
   sendNotification as apiSendNotification,
   updatePackageStatus as apiUpdatePackageStatus,
+  uploadReceipt as apiUploadReceipt,
+  approveUserPayment as apiApprove,
+  rejectUserPayment as apiReject,
+  manualPayUserPayment as apiManualPay,
+  cancelPaymentRequest as apiCancelPayment,
+  getExpenses as apiGetExpenses,
+  createExpense as apiCreateExpense,
+  deleteExpense as apiDeleteExpense,
   type NotificationDto,
   type PaymentDto,
   type UserPaymentDto,
   type MessageDto,
   type PackageDto,
   type ChatDto,
+  type ExpenseDto,
+  type CreateExpenseRequest,
 } from "@workspace/api-client-react";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
@@ -39,19 +49,29 @@ export type UserPayment = UserPaymentDto;
 export type Message = MessageDto;
 export type Package = PackageDto;
 export type Chat = ChatDto;
+export type Expense = ExpenseDto;
 
 interface DataContextType {
   notifications: AppNotification[];
   payments: Payment[];
   userPayments: UserPayment[];
+  expenses: Expense[];
   messages: Message[];
   packages: Package[];
   chats: Chat[];
   unreadCount: number;
+  pendingApprovalCount: number;
   sendNotification: (data: Omit<AppNotification, "id" | "createdAt" | "readBy">) => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   createPayment: (data: Omit<Payment, "id" | "createdAt">) => Promise<void>;
+  cancelPayment: (paymentId: string) => Promise<void>;
   payDue: (userPaymentId: string) => Promise<void>;
+  uploadReceipt: (upId: string, receiptUrl: string, note?: string) => Promise<void>;
+  approveUserPayment: (upId: string, note?: string) => Promise<void>;
+  rejectUserPayment: (upId: string, note: string) => Promise<void>;
+  manualPayUserPayment: (upId: string, paymentMethod: string, note?: string) => Promise<void>;
+  createExpense: (data: CreateExpenseRequest) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
   sendMessage: (chatId: string, toId: string, content: string) => Promise<void>;
   getChat: (chatId: string) => Message[];
   addPackage: (data: Omit<Package, "id" | "receivedAt">) => Promise<void>;
@@ -70,6 +90,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [userPayments, setUserPayments] = useState<UserPayment[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
@@ -77,13 +98,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const [n, p, up, m, pk, ch] = await Promise.all([
+      const [n, p, up, m, pk, ch, ex] = await Promise.all([
         getNotifications(),
         getPayments(),
         getUserPayments(),
         getMessages({}),
         getPackages(),
         getChats(),
+        user.role !== "security" ? apiGetExpenses() : Promise.resolve([]),
       ]);
       setNotifications(n as AppNotification[]);
       setPayments(p as Payment[]);
@@ -91,6 +113,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setMessages(m as Message[]);
       setPackages(pk as Package[]);
       setChats(ch as Chat[]);
+      setExpenses(ex as Expense[]);
     } catch {
       // ignore load errors silently
     }
@@ -118,6 +141,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     (n) => !n.readBy.includes(user?.id ?? ""),
   ).length;
 
+  const pendingApprovalCount = userPayments.filter((up) => up.status === "pending_approval").length;
+
   const sendNotification = async (data: Omit<AppNotification, "id" | "createdAt" | "readBy">) => {
     const newN = await apiSendNotification(data);
     setNotifications((prev) => [...prev, newN as AppNotification]);
@@ -137,8 +162,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const createPayment = async (data: Omit<Payment, "id" | "createdAt">) => {
     const newP = await apiCreatePayment(data);
-    setPayments((prev) => [...prev, newP as Payment]);
+    setPayments((prev) => [newP as Payment, ...prev]);
     await load();
+  };
+
+  const cancelPayment = async (paymentId: string) => {
+    await apiCancelPayment(paymentId);
+    setPayments((prev) => prev.map((p) => p.id === paymentId ? { ...p, cancelledAt: new Date().toISOString() } : p));
+    setUserPayments((prev) => prev.map((up) => up.paymentId === paymentId && up.status === "pending" ? { ...up, status: "cancelled" } : up));
   };
 
   const payDue = async (userPaymentId: string) => {
@@ -146,6 +177,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setUserPayments((prev) =>
       prev.map((up) => (up.id === userPaymentId ? (updated as UserPayment) : up)),
     );
+  };
+
+  const uploadReceipt = async (upId: string, receiptUrl: string, note?: string) => {
+    const updated = await apiUploadReceipt(upId, { receiptUrl, note });
+    setUserPayments((prev) => prev.map((up) => up.id === upId ? (updated as UserPayment) : up));
+  };
+
+  const approveUserPayment = async (upId: string, note?: string) => {
+    const updated = await apiApprove(upId, note !== undefined ? { note } : undefined);
+    setUserPayments((prev) => prev.map((up) => up.id === upId ? (updated as UserPayment) : up));
+  };
+
+  const rejectUserPayment = async (upId: string, note: string) => {
+    const updated = await apiReject(upId, { note });
+    setUserPayments((prev) => prev.map((up) => up.id === upId ? (updated as UserPayment) : up));
+  };
+
+  const manualPayUserPayment = async (upId: string, paymentMethod: string, note?: string) => {
+    const updated = await apiManualPay(upId, { paymentMethod, note });
+    setUserPayments((prev) => prev.map((up) => up.id === upId ? (updated as UserPayment) : up));
+  };
+
+  const createExpense = async (data: CreateExpenseRequest) => {
+    const newE = await apiCreateExpense(data);
+    setExpenses((prev) => [newE as Expense, ...prev]);
+  };
+
+  const deleteExpense = async (id: string) => {
+    await apiDeleteExpense(id);
+    setExpenses((prev) => prev.map((e) => e.id === id ? { ...e, cancelledAt: new Date().toISOString() } : e));
   };
 
   const sendMessage = async (chatId: string, _toId: string, content: string) => {
@@ -195,14 +256,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         notifications,
         payments,
         userPayments,
+        expenses,
         messages,
         packages,
         chats,
         unreadCount,
+        pendingApprovalCount,
         sendNotification,
         markNotificationRead,
         createPayment,
+        cancelPayment,
         payDue,
+        uploadReceipt,
+        approveUserPayment,
+        rejectUserPayment,
+        manualPayUserPayment,
+        createExpense,
+        deleteExpense,
         sendMessage,
         getChat,
         addPackage,
