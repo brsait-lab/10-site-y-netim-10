@@ -278,21 +278,25 @@ router.get("/user-payments", requireAuth, blockSecurity, async (req: Request, re
     });
     const unitKey = currentUser ? buildUnitKey(currentUser) : null;
 
-    // ── ORTA: Cancelled kayıtları resident'a gösterme ────────────────────────
-    const [unitPayments, personalPayments] = await Promise.all([
-      unitKey
-        ? prisma.userPayment.findMany({ where: { unitKey, siteId, status: { not: "cancelled" } } })
-        : Promise.resolve([]),
-      prisma.userPayment.findMany({ where: { userId, siteId, status: { not: "cancelled" } } }),
-    ]);
+    // ── ORTA: Tek OR sorgusu — cancelled hariç, DB'de sıralı sayfalama ───────
+    // Önceki iki-ayrı-sorgu + RAM-merge yaklaşımı yerine tek verimli query.
+    // Resident hem kendi userId'sine hem unitKey'ine ait kayıtları görür.
+    // status = cancelled olan kayıtlar hiçbir zaman resident'a dönmez.
+    const orConditions: object[] = [{ userId }];
+    if (unitKey) orConditions.push({ unitKey });
 
-    const unitIds = new Set(unitPayments.map((u) => u.id));
-    const merged = [
-      ...unitPayments,
-      ...personalPayments.filter((p) => !unitIds.has(p.id)),
-    ].slice(offset, offset + limit);
+    const rows = await prisma.userPayment.findMany({
+      where: {
+        siteId,
+        status: { not: "cancelled" },
+        OR: orConditions,
+      },
+      orderBy: { paymentId: "asc" },
+      take: limit,
+      skip: offset,
+    });
 
-    return res.json(merged.map(toUserPaymentDto));
+    return res.json(rows.map(toUserPaymentDto));
   }
 
   const rows = await prisma.userPayment.findMany({
