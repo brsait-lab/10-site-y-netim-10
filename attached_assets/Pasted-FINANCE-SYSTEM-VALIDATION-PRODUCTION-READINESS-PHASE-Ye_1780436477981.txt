@@ -1,0 +1,270 @@
+FINANCE SYSTEM VALIDATION & PRODUCTION READINESS PHASE
+
+Yeni özellik geliştirmeden önce mevcut finans sistemini uçtan uca doğrula.
+
+Amaç:
+
+* Mantık hatalarını bulmak
+* Yetki açıklarını bulmak
+* Veri tutarsızlıklarını bulmak
+* Üretim öncesi riskleri raporlamak
+
+────────────────────────────
+
+1. DAİRE BAZLI AİDAT DOĞRULAMA
+
+Aşağıdaki senaryoyu test et:
+
+A Blok 12
+
+* Ahmet
+* Ayşe
+* Mehmet
+
+aynı dairede aktif kullanıcı.
+
+Mart Aidatı oluştur.
+
+Kontrol et:
+
+* Kaç UserPayment oluşuyor?
+* Kaç unitKey oluşuyor?
+* Kaç aidat kaydı oluşuyor?
+
+Beklenen:
+
+Tek daire için tek aidat kaydı.
+
+Daha sonra:
+
+Ahmet ödeme yapsın.
+
+Kontrol et:
+
+* Ayşe'de ödendi görünüyor mu?
+* Mehmet'te ödendi görünüyor mu?
+
+Beklenen:
+
+Aynı unitKey kullanan tüm kullanıcılar aynı ödeme durumunu görmeli.
+
+────────────────────────────
+
+2. ÖDEME DURUM GEÇİŞLERİ
+
+Aşağıdaki tüm geçişleri test et:
+
+pending
+→ pending_approval
+→ paid
+
+pending
+→ pending_approval
+→ rejected
+
+pending
+→ paid (manuel tahsilat)
+
+Aşağıdakilerin mümkün olup olmadığını kontrol et:
+
+* paid → pending
+* paid → pending_approval
+* paid → paid
+* cancelled → paid
+
+Tutarsız geçiş varsa raporla.
+
+────────────────────────────
+
+3. YETKİ TESTLERİ
+
+ADMIN
+
+Kontrol et:
+
+* tüm finans verilerini görebiliyor mu
+* aidat oluşturabiliyor mu
+* onay verebiliyor mu
+* reddedebiliyor mu
+* manuel tahsilat yapabiliyor mu
+
+RESIDENT
+
+Kontrol et:
+
+* sadece kendi dairesinin aidatlarını görüyor mu
+* sadece kendi kişisel borçlarını görüyor mu
+
+SECURITY
+
+Kontrol et:
+
+* finans ekranına erişebiliyor mu
+* ödeme değiştirebiliyor mu
+* onay verebiliyor mu
+
+Beklenen:
+
+Hayır.
+
+MERCHANT
+
+Kontrol et:
+
+* finans ekranına erişebiliyor mu
+
+Beklenen:
+
+Hayır.
+
+────────────────────────────
+
+4. DEKONT AKIŞI TESTİ
+
+Senaryo:
+
+Resident
+↓
+Dekont yükle
+↓
+pending_approval
+↓
+Admin onayla
+↓
+paid
+
+Sonra:
+
+Resident
+↓
+Dekont yükle
+↓
+pending_approval
+↓
+Admin reddet
+↓
+rejected
+
+Kontrol et:
+
+* receiptUrl doğru kaydediliyor mu
+* eski dekont kayboluyor mu
+* audit log oluşuyor mu
+
+────────────────────────────
+
+5. AUDIT LOG TESTİ
+
+Aşağıdaki işlemler için log oluşuyor mu kontrol et:
+
+* aidat oluşturma
+* dekont yükleme
+* onaylama
+* reddetme
+* manuel tahsilat
+* iptal
+
+Her log için:
+
+* user id
+* işlem tipi
+* tarih
+* payment id
+
+saklanıyor mu kontrol et.
+
+────────────────────────────
+
+6. DÖNEMSEL TESTLER
+
+Aşağıdaki senaryoları simüle et:
+
+2026 Aralık Aidatı
+ödenmedi
+
+2027 Ocak
+
+Kontrol et:
+
+* borç devam ediyor mu
+* raporlarda görünüyor mu
+* kayboluyor mu
+
+Beklenen:
+
+Borç korunmalı.
+
+────────────────────────────
+
+7. DUPLICATE KONTROLLERİ
+
+Kontrol et:
+
+* aynı daireye aynı dönem için ikinci aidat oluşturulabiliyor mu
+* aynı dekont iki kez kullanılabiliyor mu
+* aynı ödeme iki kez onaylanabiliyor mu
+* aynı manuel tahsilat iki kez yapılabiliyor mu
+
+Varsa raporla.
+
+────────────────────────────
+
+8. DOSYA DEPOLAMA ANALİZİ
+
+Özellikle raporla:
+
+Dekontlar şu an nerede tutuluyor?
+
+* local filesystem
+* uploads klasörü
+* object storage
+* cloud storage
+
+Ayrıca belirt:
+
+Üretim ortamında veri kaybı riski var mı?
+
+Eğer local storage kullanılıyorsa:
+
+S3
+Cloudflare R2
+Supabase Storage
+
+önerilerinden hangisi mevcut mimariye en uygun raporla.
+
+────────────────────────────
+
+9. PERFORMANS ANALİZİ
+
+Simülasyon yap:
+
+* 100 kullanıcı
+* 500 kullanıcı
+* 1000 kullanıcı
+* 5000 kullanıcı
+
+Aşağıdaki endpointler için:
+
+GET /user-payments
+POST /payments
+PATCH /user-payments/:id/pay
+
+index kullanımı yeterli mi raporla.
+
+────────────────────────────
+
+10. ÜRETİM HAZIRLIK RAPORU
+
+Sonunda raporla:
+
+* Tespit edilen hatalar
+* Yetki açıkları
+* Veri tutarlılığı sorunları
+* Dosya depolama riskleri
+* Finans sistemi riskleri
+* Ölçeklenebilirlik durumu
+* Production readiness skoru (0-100)
+* Yayına çıkmadan önce yapılması gerekenler
+
+Amaç yeni özellik eklemek değil,
+mevcut finans sisteminin güvenilirliğini doğrulamaktır.
