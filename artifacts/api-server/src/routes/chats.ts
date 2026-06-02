@@ -43,10 +43,10 @@ router.get("/chats", requireAuth, async (req: Request, res: Response) => {
 
 router.get("/chats/:id/participants", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId } = (req as AuthRequest).authUser;
+  const { userId, siteId } = (req as AuthRequest).authUser;
 
   const chat = await prisma.chat.findUnique({ where: { id } });
-  if (!chat) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
+  if (!chat || chat.siteId !== siteId) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
 
   const isParticipant = await prisma.chatParticipant.findUnique({
     where: { chatId_userId: { chatId: id, userId } },
@@ -91,13 +91,13 @@ router.post("/chats", requireAuth, blockRoles("merchant"), async (req: Request, 
   res.status(201).json(chatToDto(chat));
 });
 
-// Only the chat creator or an admin can close a chat
+// GÜVENLİK: Sohbet bu siteye ait mi kontrol et + yalnızca oluşturan veya admin kapatabilir.
 router.patch("/chats/:id/close", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId, role } = (req as AuthRequest).authUser;
+  const { userId, role, siteId } = (req as AuthRequest).authUser;
 
   const chat = await prisma.chat.findUnique({ where: { id } });
-  if (!chat) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
+  if (!chat || chat.siteId !== siteId) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
   if (chat.status === "closed") { res.status(400).json({ message: "Sohbet zaten kapalı." }); return; }
 
   const isCreator = chat.createdBy === userId;
@@ -116,10 +116,10 @@ router.patch("/chats/:id/close", requireAuth, async (req: Request, res: Response
 
 router.delete("/chats/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId } = (req as AuthRequest).authUser;
+  const { userId, siteId } = (req as AuthRequest).authUser;
 
   const chat = await prisma.chat.findUnique({ where: { id } });
-  if (!chat) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
+  if (!chat || chat.siteId !== siteId) { res.status(404).json({ message: "Sohbet bulunamadı." }); return; }
 
   const isParticipant = await prisma.chatParticipant.findUnique({
     where: { chatId_userId: { chatId: id, userId } },

@@ -66,6 +66,7 @@ model AdminTransfer {
   reason        String?
   transferredAt DateTime @default(now()) @map("transferred_at")
 
+  @@index([siteId, transferredAt(sort: Desc)])
   @@map("admin_transfers")
 }
 
@@ -138,6 +139,7 @@ model UserPayment {
   receiptUrl    String?   @map("receipt_url")
 
   @@index([paymentId])
+  @@index([paymentId, status])
   @@index([userId])
   @@index([unitKey, siteId])
   @@index([siteId, status])
@@ -179,6 +181,7 @@ model Expense {
 
   @@index([siteId, createdAt(sort: Desc)])
   @@index([siteId, year, month])
+  @@index([siteId, cancelledAt])
   @@map("expenses")
 }
 
@@ -232,6 +235,7 @@ model Package {
   deliveredAt     DateTime? @map("delivered_at")
 
   @@index([siteId, receivedAt(sort: Desc)])
+  @@index([siteId, status])
   @@index([recipientUserId])
   @@map("packages")
 }
@@ -276,6 +280,7 @@ model VendorRequest {
   createdAt   DateTime  @default(now()) @map("created_at")
 
   @@index([siteId, createdAt(sort: Desc)])
+  @@index([siteId, status])
   @@index([vendorId])
   @@map("vendor_requests")
 }

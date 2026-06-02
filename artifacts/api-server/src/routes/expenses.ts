@@ -41,6 +41,23 @@ function toExpenseDto(e: {
   };
 }
 
+async function addExpenseAuditLog(params: {
+  siteId: string; action: string; performedBy: string; note?: string;
+}) {
+  const actor = await prisma.user.findUnique({ where: { id: params.performedBy }, select: { name: true } });
+  await prisma.paymentAuditLog.create({
+    data: {
+      siteId: params.siteId,
+      paymentId: null,
+      userPaymentId: null,
+      action: params.action,
+      performedBy: params.performedBy,
+      performedByName: actor?.name ?? "Bilinmiyor",
+      note: params.note ?? null,
+    },
+  });
+}
+
 router.get("/expenses", requireAuth, blockRoles("merchant", "security"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
   const includeCancelled = req.query["includeCancelled"] === "true";
@@ -86,12 +103,21 @@ router.post("/expenses", requireAuth, blockRoles("merchant", "resident", "securi
       year, month, period, createdBy,
     },
   });
+
+  // Audit log
+  await addExpenseAuditLog({
+    siteId,
+    action: "expense_created",
+    performedBy: createdBy,
+    note: `Gider: ${body.title} — ${body.amount} TL — kategori: ${body.category}`,
+  });
+
   res.status(201).json(toExpenseDto(expense));
 });
 
 router.delete("/expenses/:id", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { siteId } = (req as AuthRequest).authUser;
+  const { siteId, userId } = (req as AuthRequest).authUser;
   const expense = await prisma.expense.findUnique({ where: { id } });
   if (!expense || expense.siteId !== siteId) {
     res.status(404).json({ message: "Kayıt bulunamadı." });
@@ -102,6 +128,15 @@ router.delete("/expenses/:id", requireAuth, blockRoles("merchant", "resident", "
     return;
   }
   const updated = await prisma.expense.update({ where: { id }, data: { cancelledAt: new Date() } });
+
+  // Audit log
+  await addExpenseAuditLog({
+    siteId,
+    action: "expense_cancelled",
+    performedBy: userId,
+    note: `Gider iptal: ${expense.title} — ${expense.amount} TL`,
+  });
+
   res.json(toExpenseDto(updated));
 });
 

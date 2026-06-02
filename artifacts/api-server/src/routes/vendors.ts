@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
+import { blockRoles } from "../middlewares/requireRole.js";
 
 const router = Router();
 
@@ -83,6 +84,7 @@ router.post("/vendors", requireAuth, async (req: Request, res: Response) => {
   res.status(201).json(vendorToDto(vendor));
 });
 
+// GÜVENLİK: Yalnızca vendor sahibi kendi profilini düzenleyebilir.
 router.patch("/vendors/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId } = (req as AuthRequest).authUser;
@@ -144,19 +146,35 @@ router.post("/vendor-requests", requireAuth, async (req: Request, res: Response)
   res.status(201).json(requestToDto(request));
 });
 
-router.patch("/vendor-requests/:id/status", requireAuth, async (req: Request, res: Response) => {
+// GÜVENLİK: Site izolasyonu + yalnızca admin ve merchant (kendi talebi) güncelleyebilir.
+router.patch("/vendor-requests/:id/status", requireAuth, blockRoles("resident", "security"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
+  const { siteId, role, userId } = (req as AuthRequest).authUser;
   const { status } = req.body as { status: string };
 
-  try {
-    const updated = await prisma.vendorRequest.update({
-      where: { id },
-      data: { status, completedAt: status === "completed" ? new Date() : undefined },
-    });
-    res.json(requestToDto(updated));
-  } catch {
-    res.status(404).json({ message: "Talep bulunamadı." });
+  const request = await prisma.vendorRequest.findUnique({ where: { id } });
+  if (!request) { res.status(404).json({ message: "Talep bulunamadı." }); return; }
+
+  // Site izolasyonu: admin kendi sitesinin taleplerini yönetebilir
+  if (role === "admin" && request.siteId !== siteId) {
+    res.status(403).json({ message: "Bu talep bu siteye ait değil." });
+    return;
   }
+
+  // Merchant yalnızca kendine atanmış taleplerin durumunu güncelleyebilir
+  if (role === "merchant") {
+    const vendor = await prisma.vendor.findFirst({ where: { userId } });
+    if (!vendor || request.vendorId !== vendor.id) {
+      res.status(403).json({ message: "Yalnızca size atanmış talepleri güncelleyebilirsiniz." });
+      return;
+    }
+  }
+
+  const updated = await prisma.vendorRequest.update({
+    where: { id },
+    data: { status, completedAt: status === "completed" ? new Date() : undefined },
+  });
+  res.json(requestToDto(updated));
 });
 
 export default router;

@@ -36,27 +36,53 @@ router.get("/packages", requireAuth, blockRoles("merchant"), async (req: Request
   res.json(rows.map(toDto));
 });
 
-router.post("/packages", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
-  const body = req.body as {
-    siteId: string; recipientUserId: string; recipientName: string;
-    senderInfo: string; description: string;
-  };
-  const row = await prisma.package.create({ data: body });
-  res.status(201).json(toDto(row));
-});
+// GÜVENLİK: siteId token'dan alınır, body'den değil — cross-tenant kayıt engellenmiş.
+// Yalnızca admin ve security paket kaydı girebilir.
+router.post(
+  "/packages",
+  requireAuth,
+  blockRoles("merchant", "resident"),
+  async (req: Request, res: Response) => {
+    const { siteId } = (req as AuthRequest).authUser;
+    const body = req.body as {
+      recipientUserId: string; recipientName: string;
+      senderInfo: string; description: string;
+    };
+    const row = await prisma.package.create({
+      data: {
+        siteId,
+        recipientUserId: body.recipientUserId,
+        recipientName: body.recipientName,
+        senderInfo: body.senderInfo,
+        description: body.description,
+      },
+    });
+    res.status(201).json(toDto(row));
+  },
+);
 
-router.patch("/packages/:id/status", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
-  const { id } = req.params as { id: string };
-  const { status } = req.body as { status: string };
-  try {
+// GÜVENLİK: Site izolasyonu + yalnızca admin/security durum güncelleyebilir.
+router.patch(
+  "/packages/:id/status",
+  requireAuth,
+  blockRoles("merchant", "resident"),
+  async (req: Request, res: Response) => {
+    const { id } = req.params as { id: string };
+    const { siteId } = (req as AuthRequest).authUser;
+    const { status } = req.body as { status: string };
+
+    const pkg = await prisma.package.findUnique({ where: { id } });
+    if (!pkg || pkg.siteId !== siteId) {
+      res.status(404).json({ message: "Paket bulunamadı." });
+      return;
+    }
+
     const updated = await prisma.package.update({
       where: { id },
       data: { status, deliveredAt: status === "delivered" ? new Date() : undefined },
     });
     res.json(toDto(updated));
-  } catch {
-    res.status(404).json({ message: "Paket bulunamadı." });
-  }
-});
+  },
+);
 
 export default router;

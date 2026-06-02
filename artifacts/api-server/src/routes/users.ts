@@ -9,9 +9,28 @@ const router = Router();
 const DEFAULT_LIMIT = 500;
 const MAX_LIMIT = 1000;
 
+// ── Ortak audit log yardımcısı ────────────────────────────────────────────────
+async function addUserAuditLog(params: {
+  siteId: string; action: string; performedBy: string; note?: string;
+}) {
+  const actor = await prisma.user.findUnique({ where: { id: params.performedBy }, select: { name: true } });
+  await prisma.paymentAuditLog.create({
+    data: {
+      siteId: params.siteId,
+      paymentId: null,
+      userPaymentId: null,
+      action: params.action,
+      performedBy: params.performedBy,
+      performedByName: actor?.name ?? "Bilinmiyor",
+      note: params.note ?? null,
+    },
+  });
+}
+
+// ── GET /users ────────────────────────────────────────────────────────────────
+// GÜVENLİK: querySiteId her zaman token'dan alınır — kullanıcı override edemez.
 router.get("/users", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
-  const { siteId: tokenSiteId } = (req as AuthRequest).authUser;
-  const querySiteId = (req.query["siteId"] as string | undefined) ?? tokenSiteId;
+  const { siteId } = (req as AuthRequest).authUser;
 
   const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
   const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
@@ -19,13 +38,14 @@ router.get("/users", requireAuth, blockRoles("merchant"), async (req: Request, r
   const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
   const users = await prisma.user.findMany({
-    where: { siteId: querySiteId, deletedAt: null },
+    where: { siteId, deletedAt: null },
     take: limit,
     skip: offset,
   });
   res.json(users.map(toUserDto));
 });
 
+// ── GET /users/:id ────────────────────────────────────────────────────────────
 router.get("/users/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId, siteId, role } = (req as AuthRequest).authUser;
@@ -40,7 +60,8 @@ router.get("/users/:id", requireAuth, async (req: Request, res: Response) => {
     res.status(403).json({ message: "Erişim reddedildi." });
     return;
   }
-  if (role !== "admin" && user.siteId !== siteId) {
+  // GÜVENLİK: Admin dahil tüm roller yalnızca kendi sitesindeki kullanıcıları görebilir.
+  if (user.siteId !== siteId) {
     res.status(403).json({ message: "Erişim reddedildi." });
     return;
   }
@@ -48,16 +69,34 @@ router.get("/users/:id", requireAuth, async (req: Request, res: Response) => {
   res.json(toUserDto(user));
 });
 
+// ── PATCH /users/:id ──────────────────────────────────────────────────────────
+// GÜVENLİK:
+//   - merchant → yalnızca kendi profili
+//   - resident / security → yalnızca kendi profili (sınırlı alanlar)
+//   - admin → aynı sitedeki herhangi bir kullanıcı
 router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId, role } = (req as AuthRequest).authUser;
+  const { userId, siteId, role } = (req as AuthRequest).authUser;
 
-  if (role === "merchant" && id !== userId) {
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target || target.deletedAt) {
+    res.status(404).json({ message: "Kullanıcı bulunamadı." });
+    return;
+  }
+
+  // Tenant izolasyonu: her rol yalnızca kendi sitesindeki kullanıcıyı güncelleyebilir
+  if (target.siteId !== siteId) {
+    res.status(403).json({ message: "Erişim reddedildi." });
+    return;
+  }
+
+  // Merchant, resident ve security yalnızca kendini güncelleyebilir
+  if ((role === "merchant" || role === "resident" || role === "security") && id !== userId) {
     res.status(403).json({ message: "Yalnızca kendi profilinizi güncelleyebilirsiniz." });
     return;
   }
 
-  const updates = req.body as {
+  const body = req.body as {
     name?: string;
     phone?: string;
     unitNo?: string;
@@ -77,13 +116,14 @@ router.patch("/users/:id", requireAuth, async (req: Request, res: Response) => {
   };
 
   try {
-    const updated = await prisma.user.update({ where: { id }, data: updates });
+    const updated = await prisma.user.update({ where: { id }, data: body });
     res.json(toUserDto(updated));
   } catch {
     res.status(404).json({ message: "Kullanıcı bulunamadı." });
   }
 });
 
+// ── DELETE /users/:id ─────────────────────────────────────────────────────────
 router.delete(
   "/users/:id",
   requireAuth,
@@ -115,10 +155,20 @@ router.delete(
       where: { id },
       data: { deletedAt: new Date() },
     });
+
+    // Audit log
+    await addUserAuditLog({
+      siteId,
+      action: "user_deleted",
+      performedBy: adminId,
+      note: `Silinen kullanıcı: ${target.name} (${target.email}) — rol: ${target.role}`,
+    });
+
     res.json({ success: true, user: toUserDto(updated) });
   },
 );
 
+// ── POST /users/:id/transfer-admin ───────────────────────────────────────────
 router.post(
   "/users/:id/transfer-admin",
   requireAuth,
@@ -165,6 +215,14 @@ router.post(
       data: { siteId, oldAdminId, newAdminId, reason: reason ?? null },
     });
 
+    // Audit log
+    await addUserAuditLog({
+      siteId,
+      action: "admin_transfer",
+      performedBy: oldAdminId,
+      note: `Yönetim devredildi: ${newAdmin.name} (${newAdmin.email}) — neden: ${reason ?? "belirtilmedi"}`,
+    });
+
     res.json({
       success: true,
       message: `Yönetim ${newAdmin.name} adlı kullanıcıya devredildi. Eski yönetici oturumu sonlandırıldı.`,
@@ -174,6 +232,7 @@ router.post(
   },
 );
 
+// ── POST /users/:id/kvkk-consent ─────────────────────────────────────────────
 router.post(
   "/users/:id/kvkk-consent",
   requireAuth,
@@ -203,33 +262,45 @@ router.post(
   },
 );
 
+// ── PATCH /users/:id/approve ──────────────────────────────────────────────────
+// GÜVENLİK: Site kontrolü — admin yalnızca kendi sitesindeki kullanıcıyı onaylayabilir.
 router.patch(
   "/users/:id/approve",
   requireAuth,
   blockRoles("merchant", "resident", "security"),
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
-    try {
-      const updated = await prisma.user.update({ where: { id }, data: { status: "active" } });
-      res.json(toUserDto(updated));
-    } catch {
-      res.status(404).json({ message: "Kullanıcı bulunamadı." });
+    const { siteId } = (req as AuthRequest).authUser;
+
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target || target.siteId !== siteId) {
+      res.status(404).json({ message: "Kullanıcı bulunamadı veya bu siteye ait değil." });
+      return;
     }
+
+    const updated = await prisma.user.update({ where: { id }, data: { status: "active" } });
+    res.json(toUserDto(updated));
   },
 );
 
+// ── PATCH /users/:id/reject ───────────────────────────────────────────────────
+// GÜVENLİK: Site kontrolü — admin yalnızca kendi sitesindeki kullanıcıyı reddedebilir.
 router.patch(
   "/users/:id/reject",
   requireAuth,
   blockRoles("merchant", "resident", "security"),
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
-    try {
-      const updated = await prisma.user.update({ where: { id }, data: { status: "rejected" } });
-      res.json(toUserDto(updated));
-    } catch {
-      res.status(404).json({ message: "Kullanıcı bulunamadı." });
+    const { siteId } = (req as AuthRequest).authUser;
+
+    const target = await prisma.user.findUnique({ where: { id } });
+    if (!target || target.siteId !== siteId) {
+      res.status(404).json({ message: "Kullanıcı bulunamadı veya bu siteye ait değil." });
+      return;
     }
+
+    const updated = await prisma.user.update({ where: { id }, data: { status: "rejected" } });
+    res.json(toUserDto(updated));
   },
 );
 

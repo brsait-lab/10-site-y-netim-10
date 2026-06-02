@@ -61,12 +61,14 @@ router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Re
   res.json(rows.map((n) => toDto(n, readMap.get(n.id) ?? [])));
 });
 
+// GÜVENLİK: siteId her zaman token'dan alınır — body.siteId görmezden gelinir.
+// Cross-tenant bildirim gönderimi tamamen engellenmiş.
 router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, role, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
     type: string; title: string; message: string;
     fromUserId: string; fromName: string;
-    toRoles?: string[]; toUserIds?: string[]; siteId: string;
+    toRoles?: string[]; toUserIds?: string[];
   };
 
   if (role === "resident") {
@@ -122,11 +124,6 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
         res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
         return;
       }
-      const effectiveSiteId = body.siteId || tokenSiteId;
-      if (effectiveSiteId !== tokenSiteId) {
-        res.status(403).json({ message: "Yalnızca kendi sitenizde duyuru yayınlayabilirsiniz." });
-        return;
-      }
     } else {
       const toRoles = body.toRoles ?? [];
       if (toRoles.includes("merchant")) {
@@ -141,7 +138,9 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
       type: body.type, title: body.title, message: body.message,
       fromUserId: body.fromUserId, fromName: body.fromName,
       toRoles: body.toRoles ?? [], toUserIds: body.toUserIds ?? [],
-      siteId: body.siteId || tokenSiteId, readBy: [],
+      // GÜVENLİK: siteId her zaman token'dan — body.siteId kabul edilmez.
+      siteId: tokenSiteId,
+      readBy: [],
     },
   });
   res.status(201).json(toDto(row, []));
@@ -149,10 +148,11 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
 
 router.patch("/notifications/:id/read", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
-  const { userId } = (req as AuthRequest).authUser;
+  const { userId, siteId } = (req as AuthRequest).authUser;
 
-  const exists = await prisma.notification.findUnique({ where: { id }, select: { id: true } });
-  if (!exists) { res.status(404).json({ message: "Bildirim bulunamadı." }); return; }
+  // GÜVENLİK: Bildirim bu siteye ait mi kontrol et
+  const exists = await prisma.notification.findUnique({ where: { id }, select: { id: true, siteId: true } });
+  if (!exists || exists.siteId !== siteId) { res.status(404).json({ message: "Bildirim bulunamadı." }); return; }
 
   await prisma.notificationRead.upsert({
     where: { notificationId_userId: { notificationId: id, userId } },

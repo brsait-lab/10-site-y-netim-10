@@ -1,0 +1,396 @@
+# PRODUCTION READINESS & LONG-TERM STABILITY AUDIT
+
+## Amaç
+
+Mevcut mimari korunacaktır.
+
+Yeni özellik geliştirmek yerine sistemin uzun vadeli üretim hazırlığı, ölçeklenebilirliği, veri bütünlüğü, güvenlik ve operasyonel dayanıklılığı denetlenecektir.
+
+Amaç:
+
+* Çoklu site desteği
+* Binlerce kullanıcı
+* Uzun yıllar veri saklama
+* Gerçek üretim ortamı
+
+senaryolarında sistemin sorunsuz çalışmasını sağlamaktır.
+
+Hiçbir mevcut API kırılmayacak.
+
+Tenant izolasyonu korunacak.
+
+Vendor sistemi etkilenmeyecek.
+
+Geriye dönük uyumluluk korunacak.
+
+---
+
+# 1. DATABASE ARCHITECTURE REVIEW
+
+Aşağıdaki tablolar detaylı incelensin:
+
+* Users
+* Sites
+* Payments
+* UserPayments
+* Expenses
+* Notifications
+* NotificationReads
+* Messages
+* Chats
+* Packages
+* Vendors
+* VendorRequests
+* PaymentAuditLogs
+* AdminTransfers
+
+Analiz:
+
+* Eksik index var mı?
+* Gereksiz index var mı?
+* Büyük veri hacminde darboğaz oluşur mu?
+* N+1 sorgu riski var mı?
+* Full table scan oluşabilecek noktalar var mı?
+* Pagination eksikleri var mı?
+
+Çözüm gerekiyorsa uygulanmalı.
+
+---
+
+# 2. MULTI-TENANT ISOLATION AUDIT
+
+Tüm endpointler incelensin.
+
+Doğrulansın:
+
+* Site A kullanıcısı Site B verisine erişemiyor mu?
+* Site A yöneticisi Site B aidatlarını göremiyor mu?
+* Site A yöneticisi Site B kullanıcılarını değiştiremiyor mu?
+* Site A esnafı Site B verilerine erişemiyor mu?
+
+Tüm finansal endpointler ayrıca tekrar denetlensin.
+
+Eksik kontrol varsa düzeltilsin.
+
+---
+
+# 3. ROLE AUTHORIZATION REVIEW
+
+Roller:
+
+* admin
+* resident
+* security
+* merchant
+
+Her endpoint için yetki matrisi çıkarılsın.
+
+Doğrulansın:
+
+### Resident
+
+* Aidat görüntüleme
+* Dekont yükleme
+* Kendi verilerini görme
+
+Ama:
+
+* Başkasının ödeme kaydını değiştirememeli
+* Yönetim işlemi yapamamalı
+
+### Security
+
+* Operasyonel ekranlar
+* Kargo yönetimi
+
+Ama:
+
+* Aidat değiştirememeli
+* Finans işlemi yapamamalı
+
+### Merchant
+
+* Kendi profili
+* Kendi talepleri
+
+Ama:
+
+* Diğer esnafları görememeli
+* Finans sistemine erişememeli
+
+### Admin
+
+Tam yetkili olmalı.
+
+Yetki yükseltme açıkları araştırılsın.
+
+---
+
+# 4. FINANCE SYSTEM AUDIT
+
+Mevcut aidat sistemi detaylı incelensin.
+
+Doğrulansın:
+
+## Aidat
+
+Aidatlar daire bazlı çalışmalıdır.
+
+Örnek:
+
+A Blok 12
+
+* Ahmet
+* Ayşe
+* Mehmet
+
+aynı dairedeyse:
+
+Tek aidat görünmeli.
+
+Bir kişi ödediğinde tüm dairede ödenmiş görünmelidir.
+
+## Kişisel Borçlar
+
+Kişisel borçlar kullanıcı bazlı kalmalıdır.
+
+Örnek:
+
+* Ceza
+* Ek ücret
+* Bireysel borç
+
+yalnız ilgili kullanıcı tarafından görülmelidir.
+
+## Ek Giderler
+
+Ek giderler aidattan ayrıdır.
+
+Örnek:
+
+* Asansör yenileme
+* Çatı tamiri
+* Boya
+* Peyzaj
+
+Bu giderler aidatın nereye harcandığını göstermek için kullanılacaktır.
+
+Aidat sistemi ile karışmamalıdır.
+
+---
+
+# 5. YEAR-END TRANSITION AUDIT
+
+Yıl değişimi senaryoları test edilsin.
+
+Örnek:
+
+2026 Aralık Aidatı
+↓
+2027 Ocak Aidatı
+
+Kontrol:
+
+* Geçmiş dönemler korunuyor mu?
+* Eski borçlar kayboluyor mu?
+* Raporlar doğru çalışıyor mu?
+* Çift kayıt oluşuyor mu?
+
+Aidat geçmişi hiçbir zaman silinmemelidir.
+
+---
+
+# 6. RESIDENT REPLACEMENT SCENARIO
+
+Senaryo:
+
+Daire A-12
+
+Eski sakin taşındı.
+
+Yeni sakin geldi.
+
+Kontrol:
+
+Yeni kullanıcı:
+
+* Eski sohbetleri görebiliyor mu?
+* Eski aidat geçmişini görebiliyor mu?
+* Eski bildirimleri görebiliyor mu?
+* Eski ödeme kayıtlarını görebiliyor mu?
+
+Görmemelidir.
+
+Ancak dairenin aktif aidat durumu görünmeye devam etmelidir.
+
+Veri sızıntısı olmamalıdır.
+
+---
+
+# 7. ADMIN TRANSFER AUDIT
+
+Yönetici devri sonrası:
+
+* Session
+* JWT
+* Refresh token
+* Push token
+* Yetki cache'leri
+
+tamamen doğrulansın.
+
+Eski yönetici:
+
+* Yeni aidat oluşturamamalı
+* Kullanıcı yönetememeli
+* Duyuru gönderememeli
+
+Anında resident rolüne düşmelidir.
+
+---
+
+# 8. FILE STORAGE & RECEIPT SYSTEM REVIEW
+
+Dekont sistemi analiz edilsin.
+
+Üretim hedefi:
+
+Cloudflare R2
+
+Kontrol:
+
+* Yetkisiz erişim
+* Dosya silinmesi
+* URL süreleri
+* Büyük dosya yükleme
+* MIME doğrulama
+* Virüslü dosya riski
+* Storage maliyeti
+
+Güvenli yapı önerilsin.
+
+---
+
+# 9. PUSH NOTIFICATION READINESS
+
+İleride kullanılacak:
+
+* Kargo bildirimi
+* Aidat bildirimi
+* Yönetici duyuruları
+* Esnaf talepleri
+
+Mevcut mimari push notification entegrasyonuna hazır mı?
+
+Eksikler raporlansın.
+
+---
+
+# 10. CHAT SYSTEM SCALABILITY REVIEW
+
+Analiz:
+
+100 kullanıcı
+
+1000 kullanıcı
+
+5000 kullanıcı
+
+senaryolarında:
+
+* performans
+* pagination
+* websocket geçişi
+* mesaj arşivleme
+* bildirim yükü
+
+değerlendirilsin.
+
+Eksikler belirlenip çözüm önerilsin.
+
+---
+
+# 11. AUDIT LOG COVERAGE
+
+Aşağıdaki işlemler loglanıyor mu doğrulansın:
+
+* aidat oluşturma
+* aidat iptali
+* dekont yükleme
+* dekont onayı
+* dekont reddi
+* manuel tahsilat
+* gider oluşturma
+* kullanıcı silme
+* kullanıcı askıya alma
+* yönetici devri
+* vendor işlemleri
+
+Eksikler tamamlanmalı.
+
+---
+
+# 12. BACKUP & DISASTER RECOVERY
+
+Sistem için üretim stratejisi oluştur.
+
+Belirt:
+
+* günlük yedek
+* haftalık yedek
+* aylık yedek
+* geri yükleme prosedürü
+* maksimum veri kaybı süresi
+* maksimum sistem kesinti süresi
+
+---
+
+# 13. SUBSCRIPTION SYSTEM READINESS
+
+Gelecekte eklenecek SaaS abonelik sistemi için hazırlık analizi yap.
+
+Planlanan yapı:
+
+Platform
+→ Subscription
+→ Site
+→ Kullanıcılar
+
+Kontrol:
+
+* Mevcut mimari uygun mu?
+* Sonradan abonelik eklenebilir mi?
+* Site bazlı lisanslama desteklenebilir mi?
+* Paket bazlı kullanım sınırları uygulanabilir mi?
+
+Aidat sistemi ile abonelik sistemi kesinlikle karışmamalıdır.
+
+---
+
+# 14. PRODUCTION SCORECARD
+
+Sonunda rapor oluştur:
+
+## Kritik
+
+Yayına çıkmadan önce zorunlu yapılacaklar.
+
+## Yüksek Öncelik
+
+İlk 30 gün içinde yapılması gerekenler.
+
+## Orta Öncelik
+
+İlk 90 gün içinde yapılması gerekenler.
+
+## İyileştirmeler
+
+Gelecekte yapılabilecek optimizasyonlar.
+
+## Production Readiness Score
+
+0–100 arası puan ver.
+
+Her puanın gerekçesini açıkla.
+
+Amaç: Sistemin yıllarca sorunsuz çalışabilecek üretim seviyesine ulaşıp ulaşmadığını doğrulamak.
