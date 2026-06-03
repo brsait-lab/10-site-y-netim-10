@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
+import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 
 const router = Router();
 const DEFAULT_LIMIT = 200;
@@ -84,7 +85,7 @@ router.get("/expenses", requireAuth, blockRoles("merchant", "security"), async (
   res.json(rows.map(toExpenseDto));
 });
 
-router.post("/expenses", requireAuth, blockRoles("merchant", "resident", "security"), async (req: Request, res: Response) => {
+router.post("/expenses", requireAuth, blockRoles("merchant", "resident", "security"), requireActiveSubscription(), async (req: Request, res: Response) => {
   const { userId: createdBy, siteId } = (req as AuthRequest).authUser;
   const body = req.body as {
     title: string; description?: string; amount: number;

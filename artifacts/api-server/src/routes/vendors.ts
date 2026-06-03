@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
+import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 
 const router = Router();
 
@@ -130,7 +131,7 @@ router.get("/vendor-requests", requireAuth, async (req: Request, res: Response) 
   res.json(requests.map(requestToDto));
 });
 
-router.post("/vendor-requests", requireAuth, async (req: Request, res: Response) => {
+router.post("/vendor-requests", requireAuth, requireActiveSubscription(), async (req: Request, res: Response) => {
   const { userId, siteId } = (req as AuthRequest).authUser;
   const body = req.body as { vendorId?: string; title: string; description: string };
 

@@ -1,0 +1,113 @@
+PHASE 11 — REAL ACTIVATION & 1000+ USER PRODUCTION PREPARATION
+
+Kod tabanında yazılmış ancak aktif olmayan bileşenleri gerçek üretim akışına bağla. Amaç yeni özellik eklemek değil, mevcut mimariyi gerçekten çalışır hale getirmek.
+
+PRIORITY 1 — ARCHIVING ACTIVATION
+
+Şu anda archiveOldMessages(), archiveOldNotifications(), archiveOldNotificationReads(), archiveOldAuditLogs() ve runAllArchivingJobs() fonksiyonları mevcut ancak hiçbir zaman tetiklenmiyor.
+
+İstenen:
+
+* node-cron entegrasyonu
+* runAllArchivingJobs() her gün 03:00'te otomatik çalışsın
+* başarı/hata logları üretilsin
+* startup sırasında cron durumunu loglasın
+* retention policy gerçekten uygulanıyor mu doğrulansın
+
+PRIORITY 2 — NOTIFICATION PIPELINE ACTIVATION
+
+Mevcut /notifications route'u NotificationService kullanmıyorsa doğrudan Prisma erişimini kaldır.
+
+İstenen akış:
+
+Route
+→ NotificationService
+→ Database
+→ QueueService
+→ PushService
+
+Kontrol et:
+
+* NotificationService gerçekten kullanılıyor mu?
+* QueueService gerçekten tetikleniyor mu?
+* PushService gerçekten çağrılıyor mu?
+
+Sadece sınıf yazılmış olması yeterli kabul edilmesin.
+
+PRIORITY 3 — SUBSCRIPTION ENFORCEMENT
+
+requireActiveSubscription middleware'i mevcut ancak route'lara bağlı değil.
+
+Aktif hale getir:
+
+* POST /payments
+* POST /expenses
+* POST /notifications
+* POST /packages
+* POST /vendor-requests
+
+Durum kuralları:
+
+trialing → izin ver
+active → izin ver
+past_due → salt okunur
+suspended → engelle
+cancelled → engelle
+
+PRIORITY 4 — OBSERVABILITY COMPLETION
+
+Pino loglarına aşağıdaki alanları ekle:
+
+* requestId
+* userId
+* siteId
+* role
+
+Amaç:
+
+Bir hata oluştuğunda;
+
+* hangi kullanıcı
+* hangi site
+* hangi rol
+* hangi request
+
+sorusuna loglardan cevap verebilmek.
+
+PRIORITY 5 — ERROR MONITORING
+
+Sentry entegrasyonu ekle.
+
+Yakalanacaklar:
+
+* uncaught exception
+* unhandled rejection
+* express 500 errors
+
+Environment variable eksikse sistem çalışmaya devam etsin ancak warning log üret.
+
+PRIORITY 6 — PRODUCTION VALIDATION
+
+Kod yazmak değil doğrulamak istiyorum.
+
+Aşağıdakiler için kanıt üret:
+
+1. Archiving job gerçekten schedule edildi mi?
+2. NotificationService route tarafından gerçekten kullanılıyor mu?
+3. QueueService gerçekten çalışıyor mu?
+4. PushService gerçekten tetikleniyor mu?
+5. Subscription middleware gerçekten endpoint'lerde aktif mi?
+6. Pino loglarında userId/siteId görünüyor mu?
+7. Sentry aktif mi?
+
+Çıktı olarak:
+
+* Değişen dosyalar
+* Aktif edilen servisler
+* Gerçekten kullanılan middleware'ler
+* Hâlâ pasif kalan bileşenler
+
+şeklinde rapor ver.
+
+Amaç:
+Sistemi 1000+ kullanıcı ve çoklu site senaryolarına hazırlamak, yazılmış ancak pasif durumdaki bileşenleri gerçek üretim akışına bağlamak.

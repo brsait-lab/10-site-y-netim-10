@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
+import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 
 const router = Router();
 const DEFAULT_LIMIT = 200;
@@ -146,7 +147,7 @@ router.get("/payments/:id", requireAuth, blockSecurity, async (req: Request, res
 // PHASE 1: body.siteId kullanımı kaldırıldı — siteId her zaman token'dan alınır.
 // PHASE 1: Payment + UserPayment + AuditLog tek $transaction içinde atomik.
 
-router.post("/payments", requireAuth, blockNonAdmin, async (req: Request, res: Response) => {
+router.post("/payments", requireAuth, blockNonAdmin, requireActiveSubscription(), async (req: Request, res: Response) => {
   const { userId: createdBy, siteId } = (req as AuthRequest).authUser;
   const body = req.body as {
     title: string; amount: number; dueDate: string;

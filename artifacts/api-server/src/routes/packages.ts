@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
+import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 
 const router = Router();
 
@@ -43,6 +44,7 @@ router.post(
   "/packages",
   requireAuth,
   blockRoles("merchant", "resident"),
+  requireActiveSubscription(),
   async (req: Request, res: Response) => {
     const { siteId, userId } = (req as AuthRequest).authUser;
     const body = req.body as {

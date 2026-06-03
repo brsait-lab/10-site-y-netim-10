@@ -1,3 +1,4 @@
 - [Finance overhaul architecture](finance-overhaul.md) — unit-based aidat/expense system; buildUnitKey, isUnitBased, new models (PaymentAuditLog, Expense), new statuses (pending_approval, cancelled)
 - [RC hardening additions](rc-hardening.md) — rate limiters, shared audit.ts, dataRetention.ts, push schema fields, upload webp removed, secrets.ts DB+R2 checks, error middleware
 - [Scale prep phases](scale-prep.md) — 10-phase production scale prep; Decimal amounts, FK relations, Plan/Subscription models, atomic payments, notification sender fix, service layer (NotificationService/QueueService/PushService/ChatService), archiving jobs, readiness report
+- [Phase 11 activation](phase11-activation.md) — real activation: scheduler (node-cron), NotificationService pipeline wired, subscription middleware on 5 POST routes, Sentry + customProps observability

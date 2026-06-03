@@ -15,6 +15,7 @@ import {
   uploadLimiter,
   vendorRequestLimiter,
 } from "./lib/rateLimiters.js";
+import type { AuthRequest } from "./middlewares/requireAuth.js";
 
 const app: Express = express();
 
@@ -43,22 +44,33 @@ app.use("/api/payments", paymentLimiter);
 app.use("/api/upload", uploadLimiter);
 app.use("/api/vendor-requests", vendorRequestLimiter);
 
-// ── PHASE 7: Request ID + Structured logging ──────────────────────────────────
-// Her isteğe benzersiz requestId atanır. userId, siteId, role log'a eklenir.
+// ── PHASE 11 PRIORITY 4: Observability — requestId + userId + siteId + role ──
+// pinoHttp response zamanında loglar (res.on('finish')).
+// Bu noktada requireAuth çoktan çalışmış olduğu için req.authUser doludur.
+// customProps: auth alanlarını log kaydının üst seviyesine taşır.
+// serializers.req: method, url, requestId'i loglar.
 app.use(
   pinoHttp({
     logger,
     genReqId: () => randomUUID(),
+
+    // Auth context — response zamanında değerlendirilir (requireAuth çalıştıktan sonra)
+    customProps(req: Request) {
+      const authUser = (req as AuthRequest).authUser;
+      return {
+        requestId: (req as Request & { id?: string }).id,
+        userId: authUser?.userId ?? undefined,
+        siteId: authUser?.siteId ?? undefined,
+        role: authUser?.role ?? undefined,
+      };
+    },
+
     serializers: {
       req(req) {
-        const authUser = (req as Request & { authUser?: { userId?: string; siteId?: string; role?: string } }).authUser;
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
-          userId: authUser?.userId,
-          siteId: authUser?.siteId,
-          role: authUser?.role,
         };
       },
       res(res) {
@@ -67,7 +79,8 @@ app.use(
         };
       },
     },
-    customLogLevel(req, res, err) {
+
+    customLogLevel(_req, res, err) {
       if (err) return "error";
       if (res.statusCode >= 500) return "error";
       if (res.statusCode >= 400) return "warn";
@@ -91,6 +104,8 @@ app.use("/api", router);
 // ── Global error handling middleware ──────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  const authUser = (req as AuthRequest).authUser;
+
   logger.error(
     {
       err: {
@@ -101,6 +116,9 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       url: req.url?.split("?")[0],
       method: req.method,
       requestId: (req as Request & { id?: string }).id,
+      userId: authUser?.userId,
+      siteId: authUser?.siteId,
+      role: authUser?.role,
     },
     "Unhandled server error",
   );
