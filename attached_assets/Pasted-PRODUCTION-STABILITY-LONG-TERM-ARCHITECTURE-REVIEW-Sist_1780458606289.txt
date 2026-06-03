@@ -1,0 +1,167 @@
+PRODUCTION STABILITY & LONG-TERM ARCHITECTURE REVIEW
+
+Sistemin mevcut durumu üretime oldukça yakın görünüyor. Yeni özellik geliştirmeden önce mevcut mimarinin uzun vadeli dayanıklılığını, bakım maliyetini ve operasyonel risklerini incelemek istiyorum.
+
+Lütfen aşağıdaki başlıklarda kapsamlı bir denetim yap:
+
+1. APPLICATION ARCHITECTURE REVIEW
+
+* Route yapıları
+* Middleware sıralaması
+* Auth katmanı
+* Tenant izolasyonu
+* Session yönetimi
+* Audit log sistemi
+* Dosya yükleme altyapısı
+* Notification sistemi
+* Chat sistemi
+* Vendor sistemi
+
+Kod tekrarları, gereksiz karmaşıklıklar ve ileride bakım maliyeti oluşturabilecek noktaları tespit et.
+
+2. DATABASE REVIEW
+
+* Tüm tabloları incele
+* Foreign key ilişkilerini doğrula
+* Index kullanımını doğrula
+* Gereksiz index var mı kontrol et
+* Eksik index var mı kontrol et
+* Olası dead data veya orphan record senaryolarını bul
+* Veri büyümesi durumunda darboğaz oluşturabilecek tabloları listele
+
+3. SCALABILITY REVIEW
+   Aşağıdaki senaryolar için analiz yap:
+
+* 50 site
+* 500 site
+* 5.000 site
+
+ve
+
+* Site başına 100 kullanıcı
+* Site başına 1.000 kullanıcı
+* Site başına 5.000 kullanıcı
+
+Özellikle:
+
+* Chat
+* Notifications
+* Payments
+* Packages
+* Vendor Requests
+
+modüllerinde darboğaz oluşturabilecek noktaları belirt.
+
+4. SUBSCRIPTION SYSTEM READINESS
+
+Gelecekte platformun ücretli abonelik modeli olacak.
+
+İncele:
+
+* Site bazlı abonelik
+* Plan yönetimi
+* Deneme süresi
+* Faturalandırma
+* Pasif abonelik
+* Askıya alma
+* Kullanıcı limitleri
+* Site limitleri
+
+Mevcut mimari bu sisteme ne kadar hazır?
+
+Gerekli olacak minimum şema değişikliklerini öner.
+
+5. BACKUP & DISASTER RECOVERY REVIEW
+
+Kontrol et:
+
+* Veri kaybı senaryoları
+* Yanlışlıkla silme senaryoları
+* Site yöneticisi hataları
+* Sunucu çökmesi
+* Database bozulması
+* R2 erişim kaybı
+* Secret kaybı
+
+Her senaryo için önerilen kurtarma planını yaz.
+
+6. SECURITY REVIEW
+
+Tekrar denetle:
+
+* Cross-tenant erişim
+* Yetki yükseltme
+* JWT güvenliği
+* Session güvenliği
+* Dosya yükleme güvenliği
+* Rate limit kapsamı
+* Brute force riski
+* Spam riski
+* Abuse senaryoları
+
+Yeni gözden kaçmış riskler varsa listele.
+
+7. OBSERVABILITY REVIEW
+
+Kontrol et:
+
+* Loglama
+* Hata takibi
+* Audit kayıtları
+* Finansal işlemler
+* Yönetici işlemleri
+* Kritik operasyonlar
+
+Üretimde bir sorun yaşandığında kök neden analizi yapılabilecek seviyede miyiz?
+
+8. YEAR-END & LONG-TERM DATA REVIEW
+
+Aşağıdaki senaryoları test et:
+
+* Yıl sonu geçişleri
+* 5 yıllık veri
+* 10 yıllık veri
+* Eski aidatlar
+* Eski dekontlar
+* Eski bildirimler
+* Eski sohbetler
+
+Veri saklama ve arşivleme stratejisi yeterli mi?
+
+9. OPERATIONAL READINESS REVIEW
+
+Bir yönetim şirketi aynı anda yüzlerce site kullanırsa:
+
+* Destek süreçleri
+* Hata ayıklama
+* Site taşıma
+* Yönetici devri
+* Veri dışa aktarma
+* Veri içe aktarma
+
+operasyonel açıdan eksik kalan noktaları belirt.
+
+10. FINAL SCORECARD
+
+Aşağıdaki başlıklarda puan ver:
+
+* Architecture
+* Security
+* Scalability
+* Maintainability
+* Subscription Readiness
+* Disaster Recovery
+* Observability
+* Financial Integrity
+* Multi-Tenant Isolation
+* Production Readiness
+
+Her başlık için:
+
+* Mevcut puan
+* Risk seviyesi
+* Yapılması gerekenler
+
+çıktı ver.
+
+Özellikle yeni özellik eklemek yerine, üretimde sorun çıkarabilecek noktaları ve ileride teknik borç oluşturabilecek alanları tespit etmeye odaklan.
