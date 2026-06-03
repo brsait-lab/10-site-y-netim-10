@@ -1,9 +1,10 @@
 /**
- * PHASE B — System Monitoring Endpoints
+ * PHASE B + C — System Monitoring Endpoints
  *
- * TASK 4: GET /system/queues  — BullMQ queue health (admin only)
- * TASK 5: GET /system/health  — Component health + latency (public)
- * TASK 8: GET /system/metrics — Operational metrics (admin only)
+ * TASK B4:  GET /system/queues       — BullMQ queue health (admin only)
+ * TASK B5:  GET /system/health       — Component health + latency (public)
+ * TASK B8:  GET /system/metrics      — Operational metrics (admin only)
+ * TASK C4:  GET /system/slow-queries — Slow query report + index recs (admin only)
  */
 
 import { Router, Request, Response } from "express";
@@ -14,6 +15,7 @@ import { blockRoles } from "../middlewares/requireRole.js";
 import { getBullMQProvider } from "../lib/queueState.js";
 import { getSocketCount } from "../lib/wsState.js";
 import { cacheStats } from "../lib/cache.js";
+import { getSlowQueryReport } from "../lib/slowQueryBuffer.js";
 
 const router = Router();
 const blockNonAdmin = blockRoles("merchant", "resident", "security");
@@ -57,8 +59,7 @@ router.get("/system/health", async (_req: Request, res: Response) => {
   }
 
   // WebSocket
-  const wsCount = getSocketCount();
-  checks["websocket"] = { status: "ok", detail: `${wsCount} bağlantı aktif` };
+  checks["websocket"] = { status: "ok", detail: `${getSocketCount()} bağlantı aktif` };
 
   const allOk = Object.values(checks).every((c) => c.status === "ok");
   const anyError = Object.values(checks).some((c) => c.status === "error");
@@ -75,10 +76,7 @@ router.get("/system/queues", requireAuth, blockNonAdmin, async (_req: Request, r
   const queueProvider = getBullMQProvider();
 
   if (!queueProvider) {
-    res.json({
-      provider: "in_memory",
-      detail: "BullMQ/Redis aktif değil — InMemory kuyruk kullanılıyor",
-    });
+    res.json({ provider: "in_memory", detail: "BullMQ/Redis aktif değil — InMemory kuyruk kullanılıyor" });
     return;
   }
 
@@ -99,30 +97,27 @@ router.get("/system/metrics", requireAuth, blockNonAdmin, async (req: Request, r
 
   try {
     if (queueProvider) queueCounts = await queueProvider.getJobCounts();
-  } catch {
-    queueCounts = {};
-  }
+  } catch { /* no-op */ }
 
-  const totalCacheRequests = cacheStats.hits + cacheStats.misses;
-  const hitRatio = totalCacheRequests > 0
-    ? Math.round((cacheStats.hits / totalCacheRequests) * 100)
-    : 0;
+  const total = cacheStats.hits + cacheStats.misses;
+  const hitRatio = total > 0 ? Math.round((cacheStats.hits / total) * 100) : 0;
 
   res.json({
     uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
-    websocket: {
-      activeConnections: getSocketCount(),
-    },
-    queue: {
-      provider: queueProvider ? "bullmq" : "in_memory",
-      ...queueCounts,
-    },
-    cache: {
-      hits: cacheStats.hits,
-      misses: cacheStats.misses,
-      hitRatioPct: hitRatio,
-    },
+    websocket: { activeConnections: getSocketCount() },
+    queue: { provider: queueProvider ? "bullmq" : "in_memory", ...queueCounts },
+    cache: { hits: cacheStats.hits, misses: cacheStats.misses, hitRatioPct: hitRatio },
     context: { siteId },
+  });
+});
+
+// ── GET /system/slow-queries — admin only (C4) ────────────────────────────────
+router.get("/system/slow-queries", requireAuth, blockNonAdmin, (_req: Request, res: Response) => {
+  const report = getSlowQueryReport();
+  res.json({
+    ...report,
+    thresholds: { infoMs: 100, warnMs: 250, errorMs: 1000 },
+    note: "Son 500 yavaş sorgu bellekte tutulur. Yeniden başlatmada sıfırlanır.",
   });
 });
 

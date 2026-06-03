@@ -1,10 +1,10 @@
 /**
- * PHASE 5: Queue Service
+ * Queue Service — soyut kuyruk katmanı
  *
- * Soyut kuyruk katmanı. Mevcut implementasyon in-memory (synchronous).
- * Gelecekte Redis + BullMQ veya RabbitMQ'ya geçiş için arayüz sabittir.
+ * InMemory: geliştirme + Redis olmadan çalışma
+ * BullMQ:   production Redis ile yüksek throughput
  *
- * PHASE B: push_notification_chunk ve dashboard_stats_update eklendi.
+ * Job types: C8 subscription_renewal_check eklendi
  */
 
 import { logger } from "../lib/logger.js";
@@ -16,6 +16,7 @@ export interface QueueJob {
     | "push_notification"
     | "push_notification_chunk"
     | "dashboard_stats_update"
+    | "subscription_renewal_check"
     | "email"
     | "sms"
     | "data_retention"
@@ -79,16 +80,67 @@ class InMemoryQueueProvider implements QueueProvider {
         await dashboardService.refresh(siteId);
         break;
       }
+      case "subscription_renewal_check":
+        await runSubscriptionRenewalCheck();
+        break;
       case "data_retention":
-        logger.info({ jobType: job.type }, "Veri arşivleme görevi alındı (implementation pending)");
+        logger.info("[QUEUE] Veri arşivleme görevi alındı");
         break;
       case "backup":
-        logger.info({ jobType: job.type }, "Yedekleme görevi alındı (implementation pending)");
+        logger.info("[QUEUE] Yedekleme görevi alındı");
         break;
       default:
         logger.warn({ jobType: job.type }, "Bilinmeyen kuyruk iş türü");
     }
   }
+}
+
+/** Subscription renewal check — inline for InMemory provider */
+async function runSubscriptionRenewalCheck(): Promise<void> {
+  const { prisma } = await import("../lib/prisma.js");
+  const { invalidateSubscriptionCache } = await import("../routes/subscription.js");
+
+  const now = new Date();
+  const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+  // Mark active subscriptions past their period end → past_due
+  const expired = await prisma.subscription.updateMany({
+    where: {
+      status: "active",
+      currentPeriodEnd: { lt: now },
+    },
+    data: { status: "past_due" },
+  });
+
+  if (expired.count > 0) {
+    logger.info({ count: expired.count }, "[RENEWAL] Süresi dolan abonelikler past_due olarak işaretlendi");
+  }
+
+  // Find subscriptions expiring in 3 days — fetch for cache invalidation + notification
+  const expiring = await prisma.subscription.findMany({
+    where: {
+      status: "active",
+      currentPeriodEnd: { gte: now, lte: threeDaysLater },
+    },
+    select: { siteId: true, currentPeriodEnd: true },
+  });
+
+  for (const sub of expiring) {
+    await invalidateSubscriptionCache(sub.siteId);
+    logger.info({ siteId: sub.siteId, expiresAt: sub.currentPeriodEnd }, "[RENEWAL] Yaklaşan abonelik sonu");
+  }
+
+  // Invalidate caches for all past_due sites
+  const pastDue = await prisma.subscription.findMany({
+    where: { status: "past_due", updatedAt: { gte: new Date(now.getTime() - 60 * 1000) } },
+    select: { siteId: true },
+  });
+
+  for (const { siteId } of pastDue) {
+    await invalidateSubscriptionCache(siteId);
+  }
+
+  logger.info({ expired: expired.count, expiring: expiring.length }, "[RENEWAL] Abonelik kontrol tamamlandı ✓");
 }
 
 class QueueService {

@@ -153,6 +153,35 @@ export class BullMQQueueProvider implements QueueProvider {
         break;
       }
 
+      case "subscription_renewal_check": {
+        // Inline renewal logic to avoid circular import
+        const { prisma } = await import("../lib/prisma.js");
+        const { invalidateSubscriptionCache } = await import("../routes/subscription.js");
+        const now = new Date();
+        const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+        const expired = await prisma.subscription.updateMany({
+          where: { status: "active", currentPeriodEnd: { lt: now } },
+          data: { status: "past_due" },
+        });
+
+        const expiring = await prisma.subscription.findMany({
+          where: { status: "active", currentPeriodEnd: { gte: now, lte: threeDaysLater } },
+          select: { siteId: true },
+        });
+
+        for (const sub of expiring) await invalidateSubscriptionCache(sub.siteId);
+
+        const pastDue = await prisma.subscription.findMany({
+          where: { status: "past_due", updatedAt: { gte: new Date(now.getTime() - 60_000) } },
+          select: { siteId: true },
+        });
+        for (const { siteId } of pastDue) await invalidateSubscriptionCache(siteId);
+
+        logger.info({ expired: expired.count, expiring: expiring.length }, "[RENEWAL] Abonelik kontrol tamamlandı ✓");
+        break;
+      }
+
       case "data_retention":
         logger.info("[QUEUE] Veri arşivleme görevi alındı");
         break;

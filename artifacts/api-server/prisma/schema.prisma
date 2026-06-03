@@ -20,6 +20,7 @@ model Plan {
   createdAt    DateTime @default(now()) @map("created_at")
 
   subscriptions Subscription[]
+  payments      SubscriptionPayment[]
 
   @@map("plans")
 }
@@ -29,6 +30,7 @@ model Subscription {
   siteId             String    @map("site_id")
   planId             String    @map("plan_id")
   status             String    @default("active")
+  paymentInterval    String    @default("monthly") @map("payment_interval")
   trialEndsAt        DateTime? @map("trial_ends_at")
   currentPeriodStart DateTime  @map("current_period_start")
   currentPeriodEnd   DateTime  @map("current_period_end")
@@ -38,11 +40,41 @@ model Subscription {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  plan Plan @relation(fields: [planId], references: [id])
+  plan     Plan                  @relation(fields: [planId], references: [id])
+  payments SubscriptionPayment[]
 
   @@index([siteId, status])
   @@index([siteId, currentPeriodEnd])
   @@map("subscriptions")
+}
+
+// C8 — iyzico payment records
+model SubscriptionPayment {
+  id             String    @id @default(uuid())
+  siteId         String    @map("site_id")
+  planId         String    @map("plan_id")
+  subscriptionId String?   @map("subscription_id")
+  amount         Decimal   @db.Decimal(12, 2)
+  currency       String    @default("TRY")
+  status         String    @default("pending") // pending | success | failure | refunded
+  interval       String    @default("monthly") // monthly | yearly
+  providerToken  String?   @map("provider_token")
+  providerRef    String?   @map("provider_ref")
+  errorCode      String?   @map("error_code")
+  errorMessage   String?   @map("error_message")
+  periodStart    DateTime  @map("period_start")
+  periodEnd      DateTime  @map("period_end")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  plan         Plan          @relation(fields: [planId], references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([siteId, createdAt(sort: Desc)])
+  @@index([subscriptionId])
+  @@index([providerToken])
+  @@index([providerRef])
+  @@map("subscription_payments")
 }
 
 // ── CORE MODELS ───────────────────────────────────────────────────────────────

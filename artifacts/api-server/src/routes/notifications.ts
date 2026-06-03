@@ -17,6 +17,7 @@ import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { notificationService } from "../services/NotificationService.js";
+import { cacheGet, cacheSet, cacheDel } from "../lib/cache.js";
 
 const router = Router();
 
@@ -39,6 +40,34 @@ function toDto(
     createdAt: n.createdAt.toISOString(),
   };
 }
+
+// C1 — GET /notifications/unread-count (30s cache, user-level key)
+router.get("/notifications/unread-count", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
+  const { siteId, userId } = (req as AuthRequest).authUser;
+  const key = `cache:notif:unread:${siteId}:${userId}`;
+
+  const cached = await cacheGet<{ count: number }>(key);
+  if (cached) { res.json(cached); return; }
+
+  const notifs = await notificationService.getForSite(siteId, 500, 0);
+  if (notifs.length === 0) {
+    const result = { count: 0 };
+    await cacheSet(key, result, 30);
+    res.json(result);
+    return;
+  }
+
+  const reads = await prisma.notificationRead.findMany({
+    where: { notificationId: { in: notifs.map((n) => n.id) }, userId },
+    select: { notificationId: true },
+  });
+
+  const readIds = new Set(reads.map((r) => r.notificationId));
+  const count = notifs.filter((n) => !readIds.has(n.id)).length;
+  const result = { count };
+  await cacheSet(key, result, 30);
+  res.json(result);
+});
 
 router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
@@ -180,6 +209,9 @@ router.patch("/notifications/:id/read", requireAuth, blockRoles("merchant"), asy
   if (!exists || exists.siteId !== siteId) { res.status(404).json({ message: "Bildirim bulunamadı." }); return; }
 
   await notificationService.markRead(id, userId);
+
+  // Invalidate unread-count cache for this user
+  await cacheDel(`cache:notif:unread:${siteId}:${userId}`);
 
   res.status(204).end();
 });

@@ -4,6 +4,7 @@ import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
+import { cacheGet, cacheSet, cacheDel } from "../lib/cache.js";
 
 const router = Router();
 
@@ -102,6 +103,49 @@ router.patch("/vendors/:id", requireAuth, async (req: Request, res: Response) =>
   res.json(vendorToDto(updated));
 });
 
+// C1 — GET /vendor-requests/stats (60s cache, site-scoped)
+router.get("/vendor-requests/stats", requireAuth, async (req: Request, res: Response) => {
+  const { siteId, role, userId } = (req as AuthRequest).authUser;
+
+  // Merchants see stats for their own vendor
+  if (role === "merchant") {
+    const vendor = await prisma.vendor.findFirst({ where: { userId } });
+    if (!vendor) { res.json({ total: 0, pending: 0, assigned: 0, completed: 0, cancelled: 0 }); return; }
+
+    const key = `cache:vendor-requests:stats:merchant:${userId}`;
+    const cached = await cacheGet(key);
+    if (cached) { res.json(cached); return; }
+
+    const [total, pending, assigned, completed] = await Promise.all([
+      prisma.vendorRequest.count({ where: { vendorId: vendor.id } }),
+      prisma.vendorRequest.count({ where: { vendorId: vendor.id, status: "pending" } }),
+      prisma.vendorRequest.count({ where: { vendorId: vendor.id, status: "assigned" } }),
+      prisma.vendorRequest.count({ where: { vendorId: vendor.id, status: "completed" } }),
+    ]);
+
+    const result = { total, pending, assigned, completed, cancelled: 0 };
+    await cacheSet(key, result, 60);
+    res.json(result);
+    return;
+  }
+
+  const key = `cache:vendor-requests:stats:${siteId}`;
+  const cached = await cacheGet(key);
+  if (cached) { res.json(cached); return; }
+
+  const [total, pending, assigned, completed, cancelled] = await Promise.all([
+    prisma.vendorRequest.count({ where: { siteId } }),
+    prisma.vendorRequest.count({ where: { siteId, status: "pending" } }),
+    prisma.vendorRequest.count({ where: { siteId, status: "assigned" } }),
+    prisma.vendorRequest.count({ where: { siteId, status: "completed" } }),
+    prisma.vendorRequest.count({ where: { siteId, status: "cancelled" } }),
+  ]);
+
+  const result = { total, pending, assigned, completed, cancelled };
+  await cacheSet(key, result, 60);
+  res.json(result);
+});
+
 router.get("/vendor-requests", requireAuth, async (req: Request, res: Response) => {
   const { userId, siteId, role } = (req as AuthRequest).authUser;
 
@@ -152,6 +196,7 @@ router.post("/vendor-requests", requireAuth, requireActiveSubscription(), async 
     note: `Talep: ${body.title}${body.vendorId ? ` — esnaf ID: ${body.vendorId}` : " — esnaf atanmadı"}`,
   });
 
+  await cacheDel(`cache:vendor-requests:stats:${siteId}`);
   res.status(201).json(requestToDto(request));
 });
 
@@ -188,6 +233,7 @@ router.patch("/vendor-requests/:id/status", requireAuth, blockRoles("resident", 
     note: `Talep durum: ${request.status} → ${status} — "${request.title}"`,
   });
 
+  await cacheDel(`cache:vendor-requests:stats:${request.siteId}`);
   res.json(requestToDto(updated));
 });
 

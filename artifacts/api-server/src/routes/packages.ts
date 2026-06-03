@@ -4,6 +4,7 @@ import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
+import { cacheGet, cacheSet, cacheDel } from "../lib/cache.js";
 
 const router = Router();
 
@@ -20,6 +21,26 @@ function toDto(p: Awaited<ReturnType<typeof prisma.package.findFirst>>) {
     deliveredAt: p.deliveredAt?.toISOString(),
   };
 }
+
+// C1 — GET /packages/stats (60s cache)
+router.get("/packages/stats", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
+  const { siteId } = (req as AuthRequest).authUser;
+  const key = `cache:packages:stats:${siteId}`;
+
+  const cached = await cacheGet(key);
+  if (cached) { res.json(cached); return; }
+
+  const [total, pending, delivered, rejected] = await Promise.all([
+    prisma.package.count({ where: { siteId } }),
+    prisma.package.count({ where: { siteId, status: "pending" } }),
+    prisma.package.count({ where: { siteId, status: "delivered" } }),
+    prisma.package.count({ where: { siteId, status: "rejected" } }),
+  ]);
+
+  const result = { total, pending, delivered, rejected };
+  await cacheSet(key, result, 60);
+  res.json(result);
+});
 
 router.get("/packages", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
@@ -68,6 +89,7 @@ router.post(
       note: `Kargo alındı: ${body.recipientName} — gönderen: ${body.senderInfo}`,
     });
 
+    await cacheDel(`cache:packages:stats:${siteId}`);
     res.status(201).json(toDto(row));
   },
 );
@@ -102,6 +124,7 @@ router.patch(
       });
     }
 
+    await cacheDel(`cache:packages:stats:${siteId}`);
     res.json(toDto(updated));
   },
 );
