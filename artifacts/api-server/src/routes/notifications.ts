@@ -62,12 +62,13 @@ router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Re
   res.json(rows.map((n) => toDto(n, readMap.get(n.id) ?? [])));
 });
 
-// GÜVENLİK: siteId her zaman token'dan alınır — cross-tenant bildirim imkansız.
+// PHASE 1: fromUserId ve fromName artık body'den alınmıyor.
+// Her zaman token'daki userId ve DB'den alınan kullanıcı adı kullanılır.
+// Cross-tenant ve kimlik sahteciliği riski tamamen ortadan kaldırıldı.
 router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, role, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
     type: string; title: string; message: string;
-    fromUserId: string; fromName: string;
     toRoles?: string[]; toUserIds?: string[];
   };
 
@@ -126,17 +127,24 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
     }
   }
 
+  // PHASE 1: Sender kimliği her zaman token + DB'den alınır
+  const sender = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true },
+  });
+  const fromName = sender?.name ?? "Bilinmiyor";
+
   const row = await prisma.notification.create({
     data: {
       type: body.type, title: body.title, message: body.message,
-      fromUserId: body.fromUserId, fromName: body.fromName,
+      fromUserId: userId,
+      fromName,
       toRoles: body.toRoles ?? [], toUserIds: body.toUserIds ?? [],
       siteId: tokenSiteId,
       readBy: [],
     },
   });
 
-  // Audit log: bildirim gönderme kaydı
   await addAuditLog({
     siteId: tokenSiteId,
     action: "notification_sent",

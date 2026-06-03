@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
+import { addAuditLog } from "../lib/audit.js";
 
 const router = Router();
 const DEFAULT_LIMIT = 200;
@@ -40,34 +41,17 @@ function extractPeriod(dueDate: string): { year: number | null; month: number | 
   return { year: null, month: null, period: null };
 }
 
-async function addAuditLog(params: {
-  siteId: string; paymentId?: string; userPaymentId?: string;
-  action: string; performedBy: string; note?: string;
-}) {
-  const user = await prisma.user.findUnique({ where: { id: params.performedBy }, select: { name: true } });
-  await prisma.paymentAuditLog.create({
-    data: {
-      siteId: params.siteId,
-      paymentId: params.paymentId ?? null,
-      userPaymentId: params.userPaymentId ?? null,
-      action: params.action,
-      performedBy: params.performedBy,
-      performedByName: user?.name ?? "Bilinmiyor",
-      note: params.note ?? null,
-    },
-  });
-}
-
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
 function toPaymentDto(p: {
-  id: string; siteId: string; title: string; amount: number; dueDate: string;
-  type: string; description: string | null; targetBlocks: string[];
+  id: string; siteId: string; title: string; amount: number | { toNumber(): number };
+  dueDate: string; type: string; description: string | null; targetBlocks: string[];
   targetUserIds: string[]; createdBy: string; cancelledAt: Date | null;
   createdAt: Date; year: number | null; month: number | null; period: string | null;
 }) {
   return {
-    id: p.id, siteId: p.siteId, title: p.title, amount: p.amount,
+    id: p.id, siteId: p.siteId, title: p.title,
+    amount: Number(p.amount),
     dueDate: p.dueDate, type: p.type,
     description: p.description ?? undefined,
     targetBlocks: p.targetBlocks, targetUserIds: p.targetUserIds,
@@ -118,7 +102,6 @@ async function getResidents(
   return prisma.user.findMany({ where: base, select });
 }
 
-// ── Tenant isolation guard ────────────────────────────────────────────────────
 // Ensures the userPayment belongs to the authenticated user's site.
 function assertSameSite(existingSiteId: string, authSiteId: string, res: Response): boolean {
   if (existingSiteId !== authSiteId) {
@@ -159,12 +142,14 @@ router.get("/payments/:id", requireAuth, blockSecurity, async (req: Request, res
   res.json(toPaymentDto(payment));
 });
 
-// ── POST /payments — admin only ───────────────────────────────────────────────
+// ── POST /payments — admin only, fully atomic ─────────────────────────────────
+// PHASE 1: body.siteId kullanımı kaldırıldı — siteId her zaman token'dan alınır.
+// PHASE 1: Payment + UserPayment + AuditLog tek $transaction içinde atomik.
 
 router.post("/payments", requireAuth, blockNonAdmin, async (req: Request, res: Response) => {
-  const { userId: createdBy, siteId: tokenSiteId } = (req as AuthRequest).authUser;
+  const { userId: createdBy, siteId } = (req as AuthRequest).authUser;
   const body = req.body as {
-    siteId?: string; title: string; amount: number; dueDate: string;
+    title: string; amount: number; dueDate: string;
     type: string; description?: string;
     targetBlocks?: string[]; targetUserIds?: string[];
   };
@@ -174,12 +159,11 @@ router.post("/payments", requireAuth, blockNonAdmin, async (req: Request, res: R
     return;
   }
 
-  const siteId = body.siteId ?? tokenSiteId;
   const { year, month, period } = extractPeriod(body.dueDate);
   const targetBlocks = body.targetBlocks ?? [];
   const targetUserIds = body.targetUserIds ?? [];
 
-  // ── KRİTİK 4: Aynı dönem & type için duplicate engelle ──────────────────
+  // Duplicate check (read-only, before transaction)
   if (period && isUnitBased(body.type)) {
     const duplicate = await prisma.payment.findFirst({
       where: { siteId, type: body.type, period, cancelledAt: null },
@@ -193,45 +177,59 @@ router.post("/payments", requireAuth, blockNonAdmin, async (req: Request, res: R
     }
   }
 
-  const payment = await prisma.payment.create({
-    data: {
-      siteId, title: body.title, amount: body.amount, dueDate: body.dueDate,
-      type: body.type, description: body.description,
-      targetBlocks, targetUserIds, createdBy, year, month, period,
-    },
-  });
+  // Pre-fetch residents and actor name (read-only, before transaction)
+  const [residents, actor] = await Promise.all([
+    getResidents(siteId, targetBlocks, targetUserIds),
+    prisma.user.findUnique({ where: { id: createdBy }, select: { name: true } }),
+  ]);
+  const actorName = actor?.name ?? "Bilinmiyor";
 
-  const residents = await getResidents(siteId, targetBlocks, targetUserIds);
+  // Build user payment data in memory
+  const unitBased = isUnitBased(body.type);
+  const upData: { unitKey: string | null; userId: string | null; siteId: string; status: string }[] = [];
 
-  if (isUnitBased(body.type)) {
-    const unitKeyMap = new Map<string, true>();
-    const unitData: { paymentId: string; unitKey: string; userId: null; siteId: string; status: string }[] = [];
+  if (unitBased) {
+    const seen = new Map<string, true>();
     for (const r of residents) {
       const uk = buildUnitKey(r);
-      if (uk && !unitKeyMap.has(uk)) {
-        unitKeyMap.set(uk, true);
-        unitData.push({ paymentId: payment.id, unitKey: uk, userId: null, siteId, status: "pending" });
+      if (uk && !seen.has(uk)) {
+        seen.set(uk, true);
+        upData.push({ unitKey: uk, userId: null, siteId, status: "pending" });
       }
     }
-    if (unitData.length > 0) {
-      await prisma.userPayment.createMany({ data: unitData, skipDuplicates: true });
-    }
   } else {
-    if (residents.length > 0) {
-      await prisma.userPayment.createMany({
-        data: residents.map((u) => ({
-          paymentId: payment.id, userId: u.id, unitKey: null, siteId, status: "pending",
-        })),
-        skipDuplicates: true,
-      });
+    for (const u of residents) {
+      upData.push({ userId: u.id, unitKey: null, siteId, status: "pending" });
     }
   }
 
-  await addAuditLog({
-    siteId, paymentId: payment.id,
-    action: "created",
-    performedBy: createdBy,
-    note: `${body.type}: ${body.title} | ₺${body.amount}`,
+  // ── ATOMIC TRANSACTION: Payment + UserPayments + AuditLog ────────────────
+  const payment = await prisma.$transaction(async (tx) => {
+    const created = await tx.payment.create({
+      data: {
+        siteId, title: body.title, amount: body.amount, dueDate: body.dueDate,
+        type: body.type, description: body.description,
+        targetBlocks, targetUserIds, createdBy, year, month, period,
+      },
+    });
+
+    if (upData.length > 0) {
+      await tx.userPayment.createMany({
+        data: upData.map((d) => ({ ...d, paymentId: created.id })),
+        skipDuplicates: true,
+      });
+    }
+
+    await addAuditLog({
+      siteId, paymentId: created.id,
+      action: "payment_created",
+      performedBy: createdBy,
+      performedByName: actorName,
+      note: `${body.type}: ${body.title} | ₺${body.amount}`,
+      client: tx,
+    });
+
+    return created;
   });
 
   res.status(201).json(toPaymentDto(payment));
@@ -258,7 +256,7 @@ router.delete("/payments/:id", requireAuth, blockNonAdmin, async (req: Request, 
     prisma.userPayment.updateMany({ where: { paymentId: id, status: "pending" }, data: { status: "cancelled" } }),
   ]);
 
-  await addAuditLog({ siteId, paymentId: id, action: "cancelled", performedBy: userId });
+  await addAuditLog({ siteId, paymentId: id, action: "payment_cancelled", performedBy: userId });
   res.json({ success: true, payment: toPaymentDto(updatedPayment), cancelledUserPayments: count });
 });
 
@@ -278,10 +276,6 @@ router.get("/user-payments", requireAuth, blockSecurity, async (req: Request, re
     });
     const unitKey = currentUser ? buildUnitKey(currentUser) : null;
 
-    // ── ORTA: Tek OR sorgusu — cancelled hariç, DB'de sıralı sayfalama ───────
-    // Önceki iki-ayrı-sorgu + RAM-merge yaklaşımı yerine tek verimli query.
-    // Resident hem kendi userId'sine hem unitKey'ine ait kayıtları görür.
-    // status = cancelled olan kayıtlar hiçbir zaman resident'a dönmez.
     const orConditions: object[] = [{ userId }];
     if (unitKey) orConditions.push({ unitKey });
 
@@ -329,10 +323,7 @@ router.get("/user-payments/stats", requireAuth, blockNonAdmin, async (req: Reque
   });
 });
 
-// ── PATCH /user-payments/:id/pay — backward compat ───────────────────────────
-// KRİTİK 1: Resident bu endpoint'ten doğrudan "paid" yapamaz.
-//   → Resident için upload-receipt davranışı uygulanır (pending_approval).
-//   → Admin/non-resident için eski davranış korunur.
+// ── PATCH /user-payments/:id/pay ──────────────────────────────────────────────
 
 router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
@@ -342,11 +333,9 @@ router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: R
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
 
-  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
   if (!assertSameSite(existing.siteId, siteId, res)) return;
 
   if (role === "resident") {
-    // Resident erişim kontrolü
     if (existing.unitKey) {
       const cu = await prisma.user.findUnique({ where: { id: userId }, select: { block: true, tower: true, unitNo: true, villaNo: true } });
       if (buildUnitKey(cu ?? {}) !== existing.unitKey) {
@@ -356,7 +345,6 @@ router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: R
       res.status(403).json({ message: "Yalnızca kendi ödemenizi yapabilirsiniz." }); return;
     }
 
-    // ── KRİTİK 1: Resident doğrudan "paid" yapamaz → upload-receipt akışına yönlendir
     if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }
     if (existing.status === "cancelled") { res.status(400).json({ message: "İptal edilmiş aidat ödenemez." }); return; }
 
@@ -385,7 +373,6 @@ router.patch("/user-payments/:id/pay", requireAuth, blockSecurity, async (req: R
     return;
   }
 
-  // Admin / non-resident: eski davranış korunur
   if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }
   if (existing.status === "cancelled") { res.status(400).json({ message: "İptal edilmiş aidat ödenemez." }); return; }
 
@@ -416,7 +403,6 @@ router.patch("/user-payments/:id/upload-receipt", requireAuth, blockSecurity, as
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
 
-  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
   if (!assertSameSite(existing.siteId, siteId, res)) return;
 
   if (role === "resident") {
@@ -452,7 +438,6 @@ router.patch("/user-payments/:id/approve", requireAuth, blockNonAdmin, async (re
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
 
-  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
   if (!assertSameSite(existing.siteId, siteId, res)) return;
 
   if (existing.status !== "pending_approval") {
@@ -469,7 +454,7 @@ router.patch("/user-payments/:id/approve", requireAuth, blockNonAdmin, async (re
     },
   });
 
-  await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "approved", performedBy: userId, note: body.note });
+  await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "payment_approved", performedBy: userId, note: body.note });
   res.json(toUserPaymentDto(updated));
 });
 
@@ -483,7 +468,6 @@ router.patch("/user-payments/:id/reject", requireAuth, blockNonAdmin, async (req
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
 
-  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
   if (!assertSameSite(existing.siteId, siteId, res)) return;
 
   if (existing.status !== "pending_approval") {
@@ -495,7 +479,7 @@ router.patch("/user-payments/:id/reject", requireAuth, blockNonAdmin, async (req
     data: { status: "rejected", note: body.note ?? existing.note },
   });
 
-  await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "rejected", performedBy: userId, note: body.note });
+  await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "payment_rejected", performedBy: userId, note: body.note });
   res.json(toUserPaymentDto(updated));
 });
 
@@ -511,7 +495,6 @@ router.patch("/user-payments/:id/manual-pay", requireAuth, blockNonAdmin, async 
   const existing = await prisma.userPayment.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ message: "Kayıt bulunamadı." }); return; }
 
-  // ── KRİTİK 2: Tenant izolasyonu ─────────────────────────────────────────
   if (!assertSameSite(existing.siteId, siteId, res)) return;
 
   if (existing.status === "paid") { res.status(400).json({ message: "Bu aidat zaten ödenmiş." }); return; }

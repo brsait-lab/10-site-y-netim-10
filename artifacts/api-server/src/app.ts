@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import pinoHttp from "pino-http";
+import { randomUUID } from "node:crypto";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import {
@@ -31,40 +32,33 @@ app.use(
   }),
 );
 
-// ── Endpoint bazlı rate limit'ler (global sınırdan önce uygulanır) ───────────
-// Auth: brute-force koruması
+// ── Endpoint bazlı rate limit'ler ────────────────────────────────────────────
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
-
-// Site arama: join-code keşif koruması
 app.use("/api/sites/lookup", siteLookupLimiter);
-
-// Mesajlar: spam koruması
 app.use("/api/messages", messageLimiter);
-
-// Bildirimler: spam koruması
 app.use("/api/notifications", notificationLimiter);
-
-// Aidat işlemleri: finansal işlem güvenliği
 app.use("/api/user-payments", paymentLimiter);
 app.use("/api/payments", paymentLimiter);
-
-// Dosya yükleme: R2 maliyet koruması
 app.use("/api/upload", uploadLimiter);
-
-// Vendor talepleri: spam koruması
 app.use("/api/vendor-requests", vendorRequestLimiter);
 
-// ── Request logging ───────────────────────────────────────────────────────────
+// ── PHASE 7: Request ID + Structured logging ──────────────────────────────────
+// Her isteğe benzersiz requestId atanır. userId, siteId, role log'a eklenir.
 app.use(
   pinoHttp({
     logger,
+    genReqId: () => randomUUID(),
     serializers: {
       req(req) {
+        const authUser = (req as Request & { authUser?: { userId?: string; siteId?: string; role?: string } }).authUser;
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
+          userId: authUser?.userId,
+          siteId: authUser?.siteId,
+          role: authUser?.role,
         };
       },
       res(res) {
@@ -72,6 +66,18 @@ app.use(
           statusCode: res.statusCode,
         };
       },
+    },
+    customLogLevel(req, res, err) {
+      if (err) return "error";
+      if (res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    customSuccessMessage(req, res) {
+      return `${req.method} ${req.url?.split("?")[0]} ${res.statusCode}`;
+    },
+    customErrorMessage(req, res, err) {
+      return `${req.method} ${req.url?.split("?")[0]} ${res.statusCode} — ${err.message}`;
     },
   }),
 );
@@ -83,7 +89,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 // ── Global error handling middleware ──────────────────────────────────────────
-// Yakalanmamış hatalar yapılandırılmış log ile kayıt altına alınır.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   logger.error(
@@ -95,6 +100,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
       },
       url: req.url?.split("?")[0],
       method: req.method,
+      requestId: (req as Request & { id?: string }).id,
     },
     "Unhandled server error",
   );

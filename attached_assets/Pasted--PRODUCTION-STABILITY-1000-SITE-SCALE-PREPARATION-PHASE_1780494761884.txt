@@ -1,0 +1,292 @@
+# PRODUCTION STABILITY & 1000+ SITE SCALE PREPARATION PHASE
+
+Mevcut sistem üretime yakın seviyeye geldi. Ancak hedef yalnızca bugün sorunsuz çalışmak değil, ileride 1000+ site ve yüz binlerce kullanıcı seviyesine çıkabilecek bir mimari kurmak.
+
+Bu fazın amacı yeni özellik geliştirmek değil; sistemi uzun vadeli büyümeye hazırlamak ve gelecekte yeniden yazma ihtiyacını ortadan kaldırmaktır.
+
+## Öncelik Sırası
+
+### PHASE 1 — Üretim Öncesi Kritik Düzeltmeler
+
+Öncelikli olarak aşağıdaki maddeler tamamlanmalı:
+
+* Payment oluşturma işlemi tamamen atomik hale getirilmeli.
+* Payment + UserPayment + AuditLog işlemleri tek prisma.$transaction içerisinde çalışmalı.
+* body.siteId kullanımı tamamen kaldırılmalı.
+* Her zaman token içindeki siteId kullanılmalı.
+* payments.ts içindeki yerel addAuditLog kaldırılmalı.
+* Tüm modüller merkezi audit helper kullanmalı.
+* Notification oluştururken fromUserId ve fromName kullanıcı tarafından gönderilememeli.
+* Bu bilgiler JWT/token içinden alınmalı.
+* Secret yönetimi gözden geçirilmeli.
+* JWT_SECRET
+* SESSION_SECRET
+* IBAN_SECRET
+* DATABASE_URL
+
+Bu faz tamamlanmadan sistem production kabul edilmemeli.
+
+---
+
+## PHASE 2 — SUBSCRIPTION & REVENUE ARCHITECTURE
+
+Platformun gelir modeli için abonelik sistemi tasarlanmalı.
+
+Aidat sistemi ile abonelik sistemi tamamen ayrı tutulmalı.
+
+Eklenmesi gereken yapılar:
+
+### Plan
+
+* Free
+* Starter
+* Professional
+* Enterprise
+
+Alanlar:
+
+* maxUsers
+* maxSites
+* features
+* monthlyPrice
+* yearlyPrice
+
+### Subscription
+
+Alanlar:
+
+* siteId
+* planId
+* status
+* trialEndsAt
+* currentPeriodStart
+* currentPeriodEnd
+* cancelledAt
+* suspendedAt
+* externalProviderId
+
+### Middleware
+
+requireActiveSubscription()
+
+Kontroller:
+
+* aktif abonelik var mı
+* trial süresi dolmuş mu
+* ödeme gecikmiş mi
+* hesap askıya alınmış mı
+
+### Payment Provider Layer
+
+Stripe / iyzico entegrasyonu için ayrı servis katmanı hazırlanmalı.
+
+Amaç:
+
+* abonelik sistemi
+* aidat sistemi
+* platform gelir sistemi
+
+birbirine karışmamalı.
+
+---
+
+## PHASE 3 — DATABASE INTEGRITY HARDENING
+
+Uzun vadeli veri bütünlüğü için Foreign Key yapıları eklenmeli.
+
+Öncelikli ilişkiler:
+
+* UserPayment -> Payment
+* UserPayment -> User
+* Message -> Chat
+* VendorRequest -> User
+* NotificationRead -> Notification
+* Package -> User
+
+Amaç:
+
+* orphan record oluşmasını engellemek
+* referential integrity sağlamak
+* veri bozulmalarını önlemek
+
+---
+
+## PHASE 4 — FINANCIAL DATA HARDENING
+
+Finansal veriler Float kullanılmadan saklanmalı.
+
+Mevcut:
+
+amount Float
+
+Hedef:
+
+amount Decimal @db.Decimal(12,2)
+
+Uygulanacak tablolar:
+
+* Payment
+* Expense
+* Subscription
+* Invoice
+
+Amaç:
+
+* finansal hassasiyet kaybını önlemek
+* raporlama doğruluğunu korumak
+
+---
+
+## PHASE 5 — NOTIFICATION & QUEUE ARCHITECTURE
+
+Mevcut doğrudan gönderim yapısı gelecekte yetersiz kalacaktır.
+
+Yeni mimari:
+
+API
+→ Queue Layer
+→ Worker Layer
+→ Push Service
+
+Hazırlanacak servisler:
+
+* NotificationService
+* QueueService
+* PushService
+
+Gelecekte:
+
+* Redis
+* BullMQ
+* RabbitMQ
+
+entegrasyonlarına uygun olacak şekilde soyutlanmalı.
+
+---
+
+## PHASE 6 — CHAT ARCHITECTURE PREPARATION
+
+Bugünkü polling sistemi korunabilir.
+
+Ancak chat katmanı provider tabanlı hale getirilmeli.
+
+ChatService
+
+Provider seçenekleri:
+
+* PollingProvider
+* WebSocketProvider
+
+Amaç:
+
+100+ site sonrasında WebSocket'e geçişi kolaylaştırmak.
+
+---
+
+## PHASE 7 — OBSERVABILITY & OPERATIONS
+
+Loglama geliştirilmeli.
+
+Pino loglarına aşağıdakiler eklenmeli:
+
+* userId
+* siteId
+* role
+* requestId
+
+Ek olarak:
+
+* Prisma slow query logging
+* Sentry entegrasyonu
+* Merkezi hata takibi
+
+hazırlanmalı.
+
+---
+
+## PHASE 8 — BACKUP & DISASTER RECOVERY
+
+Yedekleme sistemi gerçek anlamda uygulanmalı.
+
+Günlük:
+
+pg_dump
+
+Akış:
+
+Database
+→ Backup Script
+→ Encrypted Archive
+→ Cloudflare R2
+
+Hedefler:
+
+* Günlük yedek
+* Haftalık yedek
+* Aylık yedek
+
+RPO:
+24 saat
+
+RTO:
+4 saat
+
+---
+
+## PHASE 9 — DATA RETENTION & ARCHIVING
+
+dataRetention.ts şu anda yalnızca politika içeriyor.
+
+Gerçek arşivleme job'ları yazılmalı.
+
+Arşivlenecek veriler:
+
+* eski mesajlar
+* eski bildirimler
+* eski notification_reads kayıtları
+* eski audit kayıtları
+
+Amaç:
+
+10 yıllık veri büyümesini yönetebilmek.
+
+---
+
+## PHASE 10 — 1000+ SITE READINESS REVIEW
+
+Bu fazın sonunda sistem aşağıdaki hedeflere göre değerlendirilmeli:
+
+### Hedef 1
+
+100 site
+10.000+ kullanıcı
+
+Sorunsuz çalışmalı.
+
+### Hedef 2
+
+1000 site
+100.000+ kullanıcı
+
+Mimari olarak hazır olmalı.
+
+### Hedef 3
+
+10.000 site
+1.000.000+ kullanıcı
+
+Yeniden yazım gerektirmeden ölçeklenebilir olmalı.
+
+Bu fazın sonunda ayrıntılı bir rapor hazırlanmalı:
+
+* Mimari değerlendirme
+* Performans değerlendirmesi
+* Veritabanı değerlendirmesi
+* Güvenlik değerlendirmesi
+* Abonelik sistemi değerlendirmesi
+* Ölçeklenebilirlik değerlendirmesi
+* Operasyonel değerlendirme
+* Production Readiness Score
+* 1 yıl / 3 yıl / 5 yıl büyüme senaryoları
+
+Amaç yalnızca bugünkü sistemi çalıştırmak değil, gelecekte yüzlerce site ve yüz binlerce kullanıcıya hizmet verebilecek sürdürülebilir bir platform oluşturmaktır.
