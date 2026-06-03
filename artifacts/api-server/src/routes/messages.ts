@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
+import { chatService } from "../services/ChatService.js";
 
 const router = Router();
 
@@ -84,14 +85,13 @@ router.post("/messages", requireAuth, async (req: Request, res: Response) => {
 
   const sender = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
 
-  const row = await prisma.message.create({
-    data: {
-      chatId: body.chatId, fromId: userId,
-      fromName: sender?.name ?? email,
-      content: maskSensitiveInfo(body.content),
-    },
+  const message = await chatService.sendMessage({
+    chatId: body.chatId,
+    fromId: userId,
+    fromName: sender?.name ?? email,
+    content: maskSensitiveInfo(body.content),
   });
-  res.status(201).json(toMessageDto(row));
+  res.status(201).json(message);
 });
 
 export default router;

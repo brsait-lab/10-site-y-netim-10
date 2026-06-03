@@ -1,0 +1,201 @@
+# SCALE-FIRST ROADMAP (500+ SITE HEDEFİ)
+
+Amacımız yalnızca production-ready olmak değil, ilk günden itibaren 500+ siteyi destekleyebilecek mimariyi kurmaktır.
+
+Şu ana kadar yapılan güvenlik, tenant izolasyonu, finansal bütünlük, audit log, rate limiting ve veri koruma çalışmaları korunacak.
+
+Bundan sonraki sprintlerin odağı ölçeklenebilirlik olacak.
+
+## PHASE A — 500 SITE READINESS (Yüksek Öncelik)
+
+### 1. Chat Polling → WebSocket
+
+Mevcut polling sistemi küçük ve orta ölçek için yeterli.
+
+500+ site hedefi için:
+
+* Socket.IO aktif hale getirilecek
+* WebSocketChatProvider gerçek io instance ile bağlanacak
+* Mesajlar polling yerine push edilecek
+* Mobil uygulama websocket fallback destekleyecek
+
+Hedef:
+
+* DB sorgularını ciddi şekilde azaltmak
+* Mesaj gecikmesini düşürmek
+* Chat kaynaklı yükü ortadan kaldırmak
+
+---
+
+### 2. Queue Katmanı
+
+Mevcut InMemoryQueueProvider yalnızca geliştirme ortamı için uygundur.
+
+BullMQ + Redis mimarisine geçilecek.
+
+Queue kullanılacak alanlar:
+
+* Push bildirimleri
+* Mail işlemleri
+* Arşivleme
+* Rapor üretimi
+* Gelecekte abonelik işlemleri
+
+Hedef:
+
+* API cevap sürelerini sabit tutmak
+* Arka plan işlemlerini ayrıştırmak
+
+---
+
+### 3. Notification Pipeline Ölçeklendirmesi
+
+Site geneli bildirimler doğrudan gönderilmeyecek.
+
+Yeni akış:
+
+Notification
+↓
+Queue
+↓
+Push Worker
+↓
+Expo / FCM
+
+Batch gönderim uygulanacak.
+
+Hedef:
+
+* Büyük sitelerde bildirim gecikmesini önlemek
+* Push limitlerine takılmamak
+
+---
+
+### 4. Redis Cache Katmanı
+
+İlk aşamada aşağıdaki veriler cache'lenecek:
+
+* Site bilgileri
+* Kullanıcı rolleri
+* Abonelik durumu
+* Dashboard istatistikleri
+
+Hedef:
+
+* PostgreSQL yükünü azaltmak
+* Sık sorgulanan verileri RAM'den sunmak
+
+---
+
+## PHASE B — 1000+ SITE READINESS
+
+### 5. Stats Endpoint Optimizasyonu
+
+Mevcut bazı istatistik endpointleri çoklu COUNT sorguları kullanıyor.
+
+Aşağıdakiler değerlendirilecek:
+
+* Materialized View
+* Cached Aggregation
+* Redis Counter
+
+Amaç:
+
+Dashboard açılışlarını milisaniye seviyesine indirmek.
+
+---
+
+### 6. NotificationRead Büyümesi
+
+NotificationRead tablosu uzun vadede en hızlı büyüyen tablo olacaktır.
+
+Çözüm:
+
+* Arşivleme job'ları
+* Partitioning hazırlığı
+* Eski kayıtların cold storage'a taşınması
+
+---
+
+### 7. Büyük Veri Arşivleme
+
+Aktif tablolar küçük tutulacak.
+
+Arşivlenecek:
+
+* Eski mesajlar
+* Eski bildirimler
+* Eski notification_read kayıtları
+* Eski audit log kayıtları
+
+Hedef:
+
+Aktif veritabanının performansını korumak.
+
+---
+
+## PHASE C — PLATFORM SCALE (2000+ SITE)
+
+### 8. Multi-Instance Hazırlığı
+
+Tüm servisler stateless olacak.
+
+Oturumlar:
+
+JWT + sessionVersion
+
+Bu sayede:
+
+* Birden fazla API instance
+* Yatay ölçekleme
+* Load balancer desteği
+
+mümkün olacak.
+
+---
+
+### 9. Observability
+
+Aşağıdakiler tamamlanacak:
+
+* Sentry
+* Slow Query Monitoring
+* Request tracing
+* Performance dashboard
+
+Amaç:
+
+Sorunları kullanıcı fark etmeden görmek.
+
+---
+
+### 10. Subscription Platform
+
+Abonelik sistemi yalnızca ödeme almak için değil;
+
+* kullanım limitleri
+* özellik açma/kapama
+* site bazlı lisanslama
+* büyüme metrikleri
+
+için kullanılacak.
+
+Mevcut Subscription ve Plan altyapısı bu hedefe uygun şekilde geliştirilecek.
+
+---
+
+# SONUÇ
+
+Sistemin mevcut hali güvenlik ve veri bütünlüğü açısından güçlüdür.
+
+500+ site hedefi için temel eksikler:
+
+1. WebSocket
+2. Redis
+3. BullMQ Queue
+4. Notification batching
+5. Cache katmanı
+
+Bu 5 madde tamamlandığında sistem 500+ site için tasarım olarak hazır kabul edilebilir.
+
+Bu aşamadan sonra odak "güvenlik düzeltmeleri" değil, "ölçek mimarisi" olmalıdır.

@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -13,7 +13,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
-import { useData, Message } from "@/context/DataContext";
+import { useData, type Message } from "@/context/DataContext";
+import { useSocket } from "@/context/SocketContext";
 import { useColors } from "@/hooks/useColors";
 
 function MessageBubble({ message, isMine }: { message: Message; isMine: boolean }) {
@@ -59,19 +60,63 @@ export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; name: string; otherId: string }>();
   const { user } = useAuth();
-  const { sendMessage, getChat, messages } = useData();
+  const { sendMessage, getChat, messages, refresh } = useData();
+  const { joinChat, leaveChat, onNewMessage, connected } = useSocket();
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const flatListRef = useRef<FlatList>(null);
 
   const chatId = params.id;
-  const chatMessages = getChat(chatId);
+
+  // Merge global messages + live WebSocket messages (deduplicate by id)
+  const baseMessages = getChat(chatId);
+  const allMessages = React.useMemo(() => {
+    const seen = new Set(baseMessages.map((m) => m.id));
+    const extra = localMessages.filter((m) => !seen.has(m.id));
+    return [...baseMessages, ...extra].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [baseMessages, localMessages]);
+
+  // Join/leave chat room via WebSocket
+  useEffect(() => {
+    joinChat(chatId);
+    return () => leaveChat(chatId);
+  }, [chatId, joinChat, leaveChat]);
+
+  // Listen for incoming WebSocket messages
+  const handleNewMessage = useCallback(
+    (msg: unknown) => {
+      const m = msg as Message;
+      if (m.chatId !== chatId) return;
+      setLocalMessages((prev) => {
+        if (prev.some((p) => p.id === m.id)) return prev;
+        return [...prev, m];
+      });
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    },
+    [chatId],
+  );
 
   useEffect(() => {
-    if (chatMessages.length > 0) {
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    const off = onNewMessage(handleNewMessage);
+    return off;
+  }, [onNewMessage, handleNewMessage]);
+
+  // Scroll to bottom on load
+  useEffect(() => {
+    if (allMessages.length > 0) {
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
     }
-  }, [chatMessages.length]);
+  }, [allMessages.length]);
+
+  // Fallback: if not connected via WS, poll every 5s
+  useEffect(() => {
+    if (connected) return;
+    const id = setInterval(() => refresh(), 5000);
+    return () => clearInterval(id);
+  }, [connected, refresh]);
 
   const handleSend = async () => {
     if (!text.trim() || !user || sending) return;
@@ -80,20 +125,23 @@ export default function ChatScreen() {
     setSending(true);
     await sendMessage(chatId, params.otherId, msg);
     setSending(false);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 0);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[
-        styles.header,
-        {
-          paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12,
-          backgroundColor: colors.card,
-          borderBottomColor: colors.border,
-        },
-      ]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 0) + 12,
+            backgroundColor: colors.card,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </Pressable>
@@ -104,7 +152,9 @@ export default function ChatScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.headerName, { color: colors.foreground }]}>{params.name}</Text>
-          <Text style={[styles.headerStatus, { color: colors.primary }]}>Çevrimiçi</Text>
+          <Text style={[styles.headerStatus, { color: connected ? colors.primary : colors.mutedForeground }]}>
+            {connected ? "Çevrimiçi" : "Bağlanıyor..."}
+          </Text>
         </View>
       </View>
 
@@ -122,7 +172,7 @@ export default function ChatScreen() {
 
         <FlatList
           ref={flatListRef}
-          data={chatMessages}
+          data={allMessages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.messageList, { paddingBottom: bottomPad + 80 }]}
           showsVerticalScrollIndicator={false}
