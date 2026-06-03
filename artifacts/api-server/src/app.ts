@@ -6,6 +6,7 @@ import pinoHttp from "pino-http";
 import { randomUUID } from "node:crypto";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
+import { runWithContext } from "./lib/requestContext.js";
 import {
   authLimiter,
   siteLookupLimiter,
@@ -44,17 +45,22 @@ app.use("/api/payments", paymentLimiter);
 app.use("/api/upload", uploadLimiter);
 app.use("/api/vendor-requests", vendorRequestLimiter);
 
+// ── PHASE B TASK 3: Request context (AsyncLocalStorage) ──────────────────────
+// Wraps every request in an ALS context seeded with requestId.
+// requireAuth.ts adds userId + siteId after successful auth.
+// Prisma slow-query logger reads this context to enrich log lines.
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  const reqId = randomUUID();
+  (req as Request & { id: string }).id = reqId;
+  runWithContext({ requestId: reqId }, next);
+});
+
 // ── PHASE 11 PRIORITY 4: Observability — requestId + userId + siteId + role ──
-// pinoHttp response zamanında loglar (res.on('finish')).
-// Bu noktada requireAuth çoktan çalışmış olduğu için req.authUser doludur.
-// customProps: auth alanlarını log kaydının üst seviyesine taşır.
-// serializers.req: method, url, requestId'i loglar.
 app.use(
   pinoHttp({
     logger,
-    genReqId: () => randomUUID(),
+    genReqId: (req) => (req as Request & { id?: string }).id ?? randomUUID(),
 
-    // Auth context — response zamanında değerlendirilir (requireAuth çalıştıktan sonra)
     customProps(req: Request) {
       const authUser = (req as AuthRequest).authUser;
       return {

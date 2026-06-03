@@ -2,5 +2,6 @@
 - [RC hardening additions](rc-hardening.md) — rate limiters, shared audit.ts, dataRetention.ts, push schema fields, upload webp removed, secrets.ts DB+R2 checks, error middleware
 - [Scale prep phases](scale-prep.md) — 10-phase production scale prep; Decimal amounts, FK relations, Plan/Subscription models, atomic payments, notification sender fix, service layer (NotificationService/QueueService/PushService/ChatService), archiving jobs, readiness report
 - [Phase 11 activation](phase11-activation.md) — real activation: scheduler (node-cron), NotificationService pipeline wired, subscription middleware on 5 POST routes, Sentry + customProps observability
+- [Phase B complete](phase-b-complete.md) — Tasks 1-8: dashboard aggregation, audit index, requestContext ALS, queue/health/metrics endpoints, K6 load tests, cache hit tracking
 - [Phase A scale infra](phase-a-scale.md) — Socket.IO WebSocket, BullMQ/Redis queue, Redis cache layer; BullMQ connection must use options object not IORedis instance (version conflict); Redis started via dev script; Metro blockList for bullmq_tmp dirs
 - [Phase B cache & batch](phase-b-cache-batch.md) — Redis cache on 5 endpoints + explicit invalidation; push_notification_chunk batch splitting (>100 tokens); Prisma $extends slow query logging; GET /subscription/status; GET /expenses/stats

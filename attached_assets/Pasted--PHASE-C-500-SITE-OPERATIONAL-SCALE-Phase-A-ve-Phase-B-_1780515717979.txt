@@ -1,0 +1,171 @@
+# PHASE C — 500+ SITE OPERATIONAL SCALE
+
+Phase A ve Phase B tamamlandıktan sonra öncelik artık güvenlik değil, operasyonel ölçek.
+
+Yeni hedef:
+
+* 500+ aktif site
+* 50.000+ kullanıcı
+* 10.000+ websocket bağlantısı
+* milyonlarca finansal kayıt
+
+---
+
+## C1 — Redis Cache Coverage Expansion
+
+Mevcut cache:
+
+* user-payments/stats
+* expenses/stats
+* sites/:id
+* subscription/status
+
+Eklenecek:
+
+* dashboard summary
+* notifications unread count
+* package statistics
+* vendor request statistics
+
+Amaç:
+
+Dashboard açılışında PostgreSQL'e minimum yük.
+
+---
+
+## C2 — Queue Monitoring Dashboard
+
+Admin endpoint:
+
+GET /system/queues
+
+Göster:
+
+* waiting
+* active
+* delayed
+* failed
+* completed
+
+BullMQ health görünürlüğü sağlansın.
+
+---
+
+## C3 — Health Monitoring
+
+GET /system/health
+
+Kontroller:
+
+* PostgreSQL
+* Redis
+* BullMQ
+* WebSocket
+
+Response:
+
+* status
+* latency
+* uptime
+
+Amaç:
+
+UptimeRobot ve monitoring araçlarına entegrasyon.
+
+---
+
+## C4 — Slow Query Remediation
+
+Slow query logger aktif.
+
+Şimdi:
+
+* son 7 günün slow query raporu
+* en sık yavaşlayan endpointler
+* önerilen indexler
+
+otomatik raporlansın.
+
+---
+
+## C5 — NotificationRead Growth Strategy
+
+Henüz migration yapma.
+
+Sadece üretim planı hazırla:
+
+* partition strategy
+* archive strategy
+* retention strategy
+
+1 milyar+ kayıt hedeflenerek.
+
+---
+
+## C6 — Load Testing
+
+Artillery veya K6 senaryoları oluştur.
+
+Testler:
+
+* 100 kullanıcı
+* 1000 kullanıcı
+* 5000 kullanıcı
+
+Ölçümler:
+
+* CPU
+* Memory
+* DB load
+* Redis load
+* WebSocket connection count
+
+Rapor üret.
+
+---
+
+## C7 — Backup Verification
+
+Mevcut backup script çalışıyor.
+
+Şimdi:
+
+* restore procedure yaz
+* disaster recovery dökümantasyonu hazırla
+* RPO ve RTO ölç
+
+Amaç:
+
+Backup'ın gerçekten geri yüklenebilir olduğunu doğrulamak.
+
+---
+
+## C8 — Subscription Monetization Layer
+
+Planlar hazır.
+
+Eklenmesi gerekenler:
+
+* Stripe
+* iyzico
+* webhook doğrulama
+* otomatik yenileme
+* abonelik askıya alma
+
+Amaç:
+
+Gelir modeline geçiş.
+
+---
+
+ÇIKTI
+
+Her madde için:
+
+* yapılan değişiklik
+* migration
+* yeni index
+* beklenen performans etkisi
+* risk
+
+ayrı raporlansın.

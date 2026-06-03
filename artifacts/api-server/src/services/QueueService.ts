@@ -4,14 +4,22 @@
  * Soyut kuyruk katmanı. Mevcut implementasyon in-memory (synchronous).
  * Gelecekte Redis + BullMQ veya RabbitMQ'ya geçiş için arayüz sabittir.
  *
- * PHASE B: push_notification_chunk job türü eklendi (büyük site batching).
+ * PHASE B: push_notification_chunk ve dashboard_stats_update eklendi.
  */
 
 import { logger } from "../lib/logger.js";
 import { pushService } from "./PushService.js";
+import { dashboardService } from "./DashboardService.js";
 
 export interface QueueJob {
-  type: "push_notification" | "push_notification_chunk" | "email" | "sms" | "data_retention" | "backup";
+  type:
+    | "push_notification"
+    | "push_notification_chunk"
+    | "dashboard_stats_update"
+    | "email"
+    | "sms"
+    | "data_retention"
+    | "backup";
   payload: Record<string, unknown>;
   priority?: number;
   retryCount?: number;
@@ -42,7 +50,6 @@ class InMemoryQueueProvider implements QueueProvider {
   private async processNext(): Promise<void> {
     const job = await this.dequeue();
     if (!job) return;
-
     try {
       await this.process(job);
     } catch (err) {
@@ -54,31 +61,22 @@ class InMemoryQueueProvider implements QueueProvider {
     switch (job.type) {
       case "push_notification": {
         const { notificationId, siteId, title, body, toRoles, toUserIds } = job.payload as {
-          notificationId: string;
-          siteId: string;
-          title: string;
-          body: string;
-          toRoles?: string[];
-          toUserIds?: string[];
+          notificationId: string; siteId: string; title: string; body: string;
+          toRoles?: string[]; toUserIds?: string[];
         };
-        await pushService.sendToTargets({
-          siteId,
-          title,
-          body,
-          data: { notificationId },
-          toRoles,
-          toUserIds,
-        });
+        await pushService.sendToTargets({ siteId, title, body, data: { notificationId }, toRoles, toUserIds });
         break;
       }
       case "push_notification_chunk": {
         const { tokens, title, body, data } = job.payload as {
-          tokens: string[];
-          title: string;
-          body: string;
-          data?: Record<string, unknown>;
+          tokens: string[]; title: string; body: string; data?: Record<string, unknown>;
         };
         await pushService.sendTokenBatch(tokens, title, body, data);
+        break;
+      }
+      case "dashboard_stats_update": {
+        const { siteId } = job.payload as { siteId: string };
+        await dashboardService.refresh(siteId);
         break;
       }
       case "data_retention":

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken, AuthUser } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { setContextValues } from "../lib/requestContext.js";
 
 export interface AuthRequest extends Request {
   authUser: AuthUser;
@@ -42,5 +43,9 @@ export async function requireAuth(
   }
 
   (req as AuthRequest).authUser = decoded;
+
+  // Populate AsyncLocalStorage request context with auth info for Prisma slow-query logger
+  setContextValues({ userId: decoded.userId, siteId: decoded.siteId });
+
   next();
 }

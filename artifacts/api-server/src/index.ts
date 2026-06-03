@@ -37,6 +37,8 @@ import { startScheduler } from "./lib/scheduler.js";
 import { verifyToken, type AuthUser } from "./lib/auth.js";
 import { chatService, WebSocketChatProvider } from "./services/ChatService.js";
 import { queueService } from "./services/QueueService.js";
+import { setIO } from "./lib/wsState.js";
+import { setBullMQProvider } from "./lib/queueState.js";
 
 validateAllSecrets();
 
@@ -95,6 +97,7 @@ io.on("connection", (socket) => {
 
 // Wire WebSocketChatProvider
 chatService.useProvider(new WebSocketChatProvider(io));
+setIO(io);
 logger.info("[WS] Socket.IO + WebSocketChatProvider aktif ✓");
 
 // ── BullMQ/Redis queue (graceful degradation) ─────────────────────────────
@@ -105,6 +108,7 @@ let bullmqProvider: import("./services/BullMQQueueProvider.js").BullMQQueueProvi
     const { BullMQQueueProvider } = await import("./services/BullMQQueueProvider.js");
     bullmqProvider = new BullMQQueueProvider();
     queueService.useProvider(bullmqProvider);
+    setBullMQProvider(bullmqProvider);
   } catch (err) {
     logger.warn({ err: (err as Error).message }, "[QUEUE] BullMQ başlatılamadı, InMemory kullanılıyor");
   }

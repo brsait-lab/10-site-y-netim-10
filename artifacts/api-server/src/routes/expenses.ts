@@ -4,6 +4,7 @@ import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { cacheGet, cacheSet, cacheDel } from "../lib/cache.js";
+import { queueService } from "../services/QueueService.js";
 
 const router = Router();
 const DEFAULT_LIMIT = 200;
@@ -153,6 +154,7 @@ router.post("/expenses", requireAuth, blockRoles("merchant", "resident", "securi
   });
 
   await cacheDel(`cache:stats:expenses:${siteId}`);
+  void queueService.enqueue({ type: "dashboard_stats_update", payload: { siteId }, priority: 8 });
   res.status(201).json(toExpenseDto(expense));
 });
 
@@ -179,6 +181,7 @@ router.delete("/expenses/:id", requireAuth, blockRoles("merchant", "resident", "
   });
 
   await cacheDel(`cache:stats:expenses:${siteId}`);
+  void queueService.enqueue({ type: "dashboard_stats_update", payload: { siteId }, priority: 8 });
   res.json(toExpenseDto(updated));
 });
 

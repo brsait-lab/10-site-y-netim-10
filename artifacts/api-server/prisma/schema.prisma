@@ -229,9 +229,27 @@ model PaymentAuditLog {
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@index([siteId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
   @@index([paymentId])
   @@index([userPaymentId])
   @@map("payment_audit_logs")
+}
+
+// ── PHASE B TASK 1: Dashboard Aggregation ──────────────────────────────────
+
+model DashboardStats {
+  id                 String   @id @default(uuid())
+  siteId             String   @unique @map("site_id")
+  totalUsers         Int      @default(0) @map("total_users")
+  totalPayments      Int      @default(0) @map("total_payments")
+  paidPayments       Int      @default(0) @map("paid_payments")
+  pendingPayments    Int      @default(0) @map("pending_payments")
+  overduePayments    Int      @default(0) @map("overdue_payments")
+  totalExpenses      Int      @default(0) @map("total_expenses")
+  totalExpenseAmount Decimal  @default(0) @db.Decimal(14, 2) @map("total_expense_amount")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("dashboard_stats")
 }
 
 model Expense {

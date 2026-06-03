@@ -5,6 +5,7 @@ import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { cacheGet, cacheSet, cacheDel } from "../lib/cache.js";
+import { queueService } from "../services/QueueService.js";
 
 const router = Router();
 const DEFAULT_LIMIT = 200;
@@ -469,6 +470,7 @@ router.patch("/user-payments/:id/approve", requireAuth, blockNonAdmin, async (re
 
   await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "payment_approved", performedBy: userId, note: body.note });
   await cacheDel(`cache:stats:payments:${siteId}`);
+  void queueService.enqueue({ type: "dashboard_stats_update", payload: { siteId }, priority: 8 });
   res.json(toUserPaymentDto(updated));
 });
 
@@ -495,6 +497,7 @@ router.patch("/user-payments/:id/reject", requireAuth, blockNonAdmin, async (req
 
   await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "payment_rejected", performedBy: userId, note: body.note });
   await cacheDel(`cache:stats:payments:${siteId}`);
+  void queueService.enqueue({ type: "dashboard_stats_update", payload: { siteId }, priority: 8 });
   res.json(toUserPaymentDto(updated));
 });
 
@@ -528,6 +531,7 @@ router.patch("/user-payments/:id/manual-pay", requireAuth, blockNonAdmin, async 
   const action = body.paymentMethod === "cash" ? "cash_collected" : "manual_collected";
   await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action, performedBy: userId, note: body.note ?? body.paymentMethod });
   await cacheDel(`cache:stats:payments:${siteId}`);
+  void queueService.enqueue({ type: "dashboard_stats_update", payload: { siteId }, priority: 8 });
   res.json(toUserPaymentDto(updated));
 });
 

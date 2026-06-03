@@ -13,6 +13,8 @@ import vendorsRouter from "./vendors.js";
 import adminTransfersRouter from "./admin-transfers.js";
 import uploadRouter from "./upload.js";
 import subscriptionRouter from "./subscription.js";
+import systemRouter from "./system.js";
+import dashboardRouter from "./dashboard.js";
 
 const router: IRouter = Router();
 
@@ -30,5 +32,7 @@ router.use(vendorsRouter);
 router.use(adminTransfersRouter);
 router.use(uploadRouter);
 router.use(subscriptionRouter);
+router.use(systemRouter);
+router.use(dashboardRouter);
 
 export default router;

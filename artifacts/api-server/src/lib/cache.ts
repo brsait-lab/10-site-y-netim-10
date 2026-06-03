@@ -3,13 +3,21 @@ import { logger } from "./logger.js";
 
 const DEFAULT_TTL = 300;
 
+/** In-memory hit/miss counters — exposed to /system/metrics. */
+export const cacheStats = { hits: 0, misses: 0 };
+
 export async function cacheGet<T>(key: string): Promise<T | null> {
   try {
     const redis = getRedis();
     const val = await redis.get(key);
-    if (!val) return null;
+    if (!val) {
+      cacheStats.misses++;
+      return null;
+    }
+    cacheStats.hits++;
     return JSON.parse(val) as T;
   } catch {
+    cacheStats.misses++;
     return null;
   }
 }
