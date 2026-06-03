@@ -1,1 +1,2 @@
 - [Finance overhaul architecture](finance-overhaul.md) — unit-based aidat/expense system; buildUnitKey, isUnitBased, new models (PaymentAuditLog, Expense), new statuses (pending_approval, cancelled)
+- [RC hardening additions](rc-hardening.md) — rate limiters, shared audit.ts, dataRetention.ts, push schema fields, upload webp removed, secrets.ts DB+R2 checks, error middleware

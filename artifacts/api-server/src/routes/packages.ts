@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
+import { addAuditLog } from "../lib/audit.js";
 
 const router = Router();
 
@@ -36,14 +37,14 @@ router.get("/packages", requireAuth, blockRoles("merchant"), async (req: Request
   res.json(rows.map(toDto));
 });
 
-// GÜVENLİK: siteId token'dan alınır, body'den değil — cross-tenant kayıt engellenmiş.
+// GÜVENLİK: siteId token'dan alınır, body'den değil.
 // Yalnızca admin ve security paket kaydı girebilir.
 router.post(
   "/packages",
   requireAuth,
   blockRoles("merchant", "resident"),
   async (req: Request, res: Response) => {
-    const { siteId } = (req as AuthRequest).authUser;
+    const { siteId, userId } = (req as AuthRequest).authUser;
     const body = req.body as {
       recipientUserId: string; recipientName: string;
       senderInfo: string; description: string;
@@ -57,6 +58,14 @@ router.post(
         description: body.description,
       },
     });
+
+    await addAuditLog({
+      siteId,
+      action: "package_received",
+      performedBy: userId,
+      note: `Kargo alındı: ${body.recipientName} — gönderen: ${body.senderInfo}`,
+    });
+
     res.status(201).json(toDto(row));
   },
 );
@@ -68,7 +77,7 @@ router.patch(
   blockRoles("merchant", "resident"),
   async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
-    const { siteId } = (req as AuthRequest).authUser;
+    const { siteId, userId } = (req as AuthRequest).authUser;
     const { status } = req.body as { status: string };
 
     const pkg = await prisma.package.findUnique({ where: { id } });
@@ -81,6 +90,16 @@ router.patch(
       where: { id },
       data: { status, deliveredAt: status === "delivered" ? new Date() : undefined },
     });
+
+    if (status === "delivered") {
+      await addAuditLog({
+        siteId,
+        action: "package_delivered",
+        performedBy: userId,
+        note: `Kargo teslim edildi: ${pkg.recipientName} (ID: ${id})`,
+      });
+    }
+
     res.json(toDto(updated));
   },
 );

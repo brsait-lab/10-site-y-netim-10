@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
+import { addAuditLog } from "../lib/audit.js";
 
 const router = Router();
 
@@ -84,7 +85,6 @@ router.post("/vendors", requireAuth, async (req: Request, res: Response) => {
   res.status(201).json(vendorToDto(vendor));
 });
 
-// GÜVENLİK: Yalnızca vendor sahibi kendi profilini düzenleyebilir.
 router.patch("/vendors/:id", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId } = (req as AuthRequest).authUser;
@@ -143,10 +143,17 @@ router.post("/vendor-requests", requireAuth, async (req: Request, res: Response)
       assignedAt: body.vendorId ? new Date() : null,
     },
   });
+
+  await addAuditLog({
+    siteId,
+    action: "vendor_request_created",
+    performedBy: userId,
+    note: `Talep: ${body.title}${body.vendorId ? ` — esnaf ID: ${body.vendorId}` : " — esnaf atanmadı"}`,
+  });
+
   res.status(201).json(requestToDto(request));
 });
 
-// GÜVENLİK: Site izolasyonu + yalnızca admin ve merchant (kendi talebi) güncelleyebilir.
 router.patch("/vendor-requests/:id/status", requireAuth, blockRoles("resident", "security"), async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { siteId, role, userId } = (req as AuthRequest).authUser;
@@ -155,13 +162,11 @@ router.patch("/vendor-requests/:id/status", requireAuth, blockRoles("resident", 
   const request = await prisma.vendorRequest.findUnique({ where: { id } });
   if (!request) { res.status(404).json({ message: "Talep bulunamadı." }); return; }
 
-  // Site izolasyonu: admin kendi sitesinin taleplerini yönetebilir
   if (role === "admin" && request.siteId !== siteId) {
     res.status(403).json({ message: "Bu talep bu siteye ait değil." });
     return;
   }
 
-  // Merchant yalnızca kendine atanmış taleplerin durumunu güncelleyebilir
   if (role === "merchant") {
     const vendor = await prisma.vendor.findFirst({ where: { userId } });
     if (!vendor || request.vendorId !== vendor.id) {
@@ -174,6 +179,14 @@ router.patch("/vendor-requests/:id/status", requireAuth, blockRoles("resident", 
     where: { id },
     data: { status, completedAt: status === "completed" ? new Date() : undefined },
   });
+
+  await addAuditLog({
+    siteId: request.siteId,
+    action: "vendor_request_updated",
+    performedBy: userId,
+    note: `Talep durum: ${request.status} → ${status} — "${request.title}"`,
+  });
+
   res.json(requestToDto(updated));
 });
 

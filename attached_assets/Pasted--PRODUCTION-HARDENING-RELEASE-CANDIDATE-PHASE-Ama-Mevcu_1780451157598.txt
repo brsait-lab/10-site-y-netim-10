@@ -1,0 +1,245 @@
+# PRODUCTION HARDENING & RELEASE CANDIDATE PHASE
+
+## Amaç
+
+Mevcut mimariyi değiştirme.
+
+Yeni özellik geliştirme.
+
+Yeni ekran geliştirme.
+
+Bu çalışma yalnızca üretim öncesi son güvenlik, performans ve operasyonel dayanıklılık eksiklerini tamamlamak içindir.
+
+Amaç:
+
+Sistemi Release Candidate (RC) seviyesine çıkarmaktır.
+
+---
+
+# 1. RATE LIMITING
+
+Tüm API endpoint'lerini incele.
+
+Aşağıdaki endpoint'lere rate limit ekle:
+
+* login
+* register
+* join-code validation
+* notifications
+* chat messages
+* payment actions
+* receipt upload
+* vendor requests
+
+Öneri:
+
+Login:
+5 istek / dakika
+
+Mesaj:
+30 istek / dakika
+
+Bildirim:
+20 istek / dakika
+
+Aidat işlemleri:
+10 istek / dakika
+
+Brute force ve spam saldırıları engellenmeli.
+
+---
+
+# 2. FILE SECURITY HARDENING
+
+Dekont sistemi için:
+
+Kontrol et:
+
+* MIME type doğrulaması
+* Dosya uzantısı doğrulaması
+* Maksimum boyut limiti
+* Zararlı dosya yükleme riski
+
+Kurallar:
+
+İzin verilenler:
+
+* jpg
+* jpeg
+* png
+* pdf
+
+Maksimum:
+
+10 MB
+
+Diğer tüm dosyalar reddedilmeli.
+
+---
+
+# 3. CLOUDFLARE R2 SECURITY
+
+Dekontlar public olmamalı.
+
+Kontrol et:
+
+* bucket erişimi
+* signed URL süresi
+* erişim politikaları
+
+Hedef:
+
+Dosyalar yalnızca yetkili kullanıcılar tarafından görüntülenebilsin.
+
+---
+
+# 4. ENVIRONMENT SECURITY CHECK
+
+Üretimde aşağıdaki env değişkenleri zorunlu olsun:
+
+* JWT_SECRET
+* SESSION_SECRET
+* IBAN_SECRET
+* DATABASE_URL
+* R2_ACCESS_KEY
+* R2_SECRET_KEY
+* R2_BUCKET
+
+Eksikse uygulama başlamasın.
+
+Fail-fast mantığı uygulanmalı.
+
+---
+
+# 5. AUDIT LOG EXPANSION
+
+Kontrol et:
+
+* vendor request oluşturma
+* vendor request tamamlama
+* notification gönderme
+* package teslim alma
+* package teslim etme
+
+Audit log'a düşüyor mu?
+
+Eksikler tamamlanmalı.
+
+---
+
+# 6. DATA RETENTION POLICY
+
+Veri saklama kuralları oluştur.
+
+Öneri:
+
+Chat:
+3 yıl
+
+Audit Log:
+7 yıl
+
+Aidat kayıtları:
+10 yıl
+
+Dekontlar:
+10 yıl
+
+Bildirimler:
+2 yıl
+
+Silme değil:
+
+archive mantığı kullanılmalı.
+
+---
+
+# 7. BACKUP AUTOMATION
+
+Manuel backup yerine otomasyon hazırla.
+
+İstenen:
+
+Günlük:
+02:00
+
+Haftalık:
+Pazar
+
+Aylık:
+Ay başı
+
+Şifreli backup oluştur.
+
+R2 veya eşdeğer güvenli depolamaya gönder.
+
+---
+
+# 8. OBSERVABILITY
+
+Sistem hataları görünür olmalı.
+
+Eklenmesi gerekenler:
+
+* request logging
+* error logging
+* audit logging
+* migration logging
+
+Amaç:
+
+Üretimde hata olduğunda sebebi bulunabilsin.
+
+---
+
+# 9. PUSH NOTIFICATION PREPARATION
+
+Henüz push sistemi kurma.
+
+Ama altyapıyı hazırla.
+
+User tablosu:
+
+* pushToken
+* pushPlatform
+* lastPushAt
+
+alanlarını ekle.
+
+Mevcut kodu bozma.
+
+---
+
+# 10. RELEASE CANDIDATE REPORT
+
+Sonunda rapor oluştur:
+
+## Kalan Kritikler
+
+## Kalan Riskler
+
+## Üretim İçin Hazır mı?
+
+EVET / HAYIR
+
+## Production Score
+
+0–100
+
+## Tavsiye
+
+Yayına çıkılabilir mi?
+Beta test gerekli mi?
+Kaç kullanıcıya kadar güvenli?
+
+---
+
+Bu faz sonunda sistem yeni özellik eklenmeden önce son kez sertleştirilmiş olmalı.
+
+Amaç:
+
+Stable
+Secure
+Maintainable
+Production Ready
+olmasıdır.

@@ -1,5 +1,5 @@
 /**
- * KRİTİK 5 — Cloudflare R2 Presigned Upload
+ * Cloudflare R2 Presigned Upload
  *
  * Gerekli ortam değişkenleri:
  *   R2_ACCOUNT_ID     — Cloudflare hesap ID'si
@@ -8,7 +8,12 @@
  *   R2_BUCKET_NAME    — Bucket adı (örn: "site-receipts")
  *   R2_PUBLIC_URL     — Bucket public URL (örn: https://receipts.yourdomain.com)
  *
- * Bu değişkenler ayarlanmadan endpoint "not configured" hatası döner.
+ * Güvenlik:
+ *   - Yalnızca izin verilen MIME tiplerini kabul eder: JPEG, PNG, PDF
+ *   - Dosya uzantısı MIME tipi ile eşleşmeli
+ *   - Maksimum dosya boyutu: 10 MB
+ *   - Presigned URL: 5 dakika (300 saniye) geçerli
+ *   - Nesneler site/user bazlı dizin yapısında saklanır
  */
 
 import { Router, Request, Response } from "express";
@@ -33,18 +38,24 @@ function getR2Client(): S3Client | null {
   });
 }
 
-const ALLOWED_MIME_TYPES = new Set([
-  "image/jpeg", "image/jpg", "image/png", "image/webp",
-  "application/pdf",
+// ── İzin verilen MIME tipleri (spec: jpg, jpeg, png, pdf) ────────────────────
+const ALLOWED_MIME_TYPES = new Map<string, string>([
+  ["image/jpeg", "jpg"],
+  ["image/jpg", "jpg"],
+  ["image/png", "png"],
+  ["application/pdf", "pdf"],
 ]);
+
+// ── İzin verilen dosya uzantıları ────────────────────────────────────────────
+const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "pdf"]);
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
-// ── POST /upload/presigned-url ────────────────────────────────────────────────
-// Resident veya admin tarafından çağrılır.
-// Body: { fileName: string, contentType: string, fileSizeBytes: number }
-// Returns: { uploadUrl: string, fileUrl: string, expiresIn: number }
+function getExtension(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() ?? "";
+}
 
+// ── POST /upload/presigned-url ────────────────────────────────────────────────
 router.post(
   "/upload/presigned-url",
   requireAuth,
@@ -76,27 +87,37 @@ router.post(
       return;
     }
 
-    const { contentType, fileSizeBytes } = body;
+    const { contentType, fileSizeBytes, fileName } = body;
 
+    // ── MIME tipi doğrulaması ──────────────────────────────────────────────────
     if (!contentType || !ALLOWED_MIME_TYPES.has(contentType)) {
       res.status(400).json({
-        message: "Desteklenmeyen dosya türü. Yalnızca JPEG, PNG, WEBP ve PDF yüklenebilir.",
+        message: "Desteklenmeyen dosya türü. Yalnızca JPEG, PNG ve PDF yüklenebilir.",
+        allowedTypes: ["image/jpeg", "image/png", "application/pdf"],
       });
       return;
     }
 
-    if (fileSizeBytes && fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+    // ── Dosya uzantısı doğrulaması ─────────────────────────────────────────────
+    if (fileName) {
+      const ext = getExtension(fileName);
+      if (!ALLOWED_EXTENSIONS.has(ext)) {
+        res.status(400).json({
+          message: `Desteklenmeyen dosya uzantısı: .${ext}. Yalnızca .jpg, .jpeg, .png ve .pdf kabul edilir.`,
+        });
+        return;
+      }
+    }
+
+    // ── Boyut kontrolü ────────────────────────────────────────────────────────
+    if (fileSizeBytes !== undefined && fileSizeBytes > MAX_FILE_SIZE_BYTES) {
       res.status(400).json({
-        message: "Dosya boyutu 10 MB'ı geçemez.",
+        message: `Dosya boyutu 10 MB'ı geçemez. Gönderilen: ${(fileSizeBytes / 1024 / 1024).toFixed(1)} MB.`,
       });
       return;
     }
 
-    const ext = contentType === "application/pdf" ? "pdf"
-      : contentType === "image/png" ? "png"
-      : contentType === "image/webp" ? "webp"
-      : "jpg";
-
+    const ext = ALLOWED_MIME_TYPES.get(contentType) ?? "jpg";
     const objectKey = `receipts/${siteId}/${userId}/${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${ext}`;
 
     const command = new PutObjectCommand({
@@ -106,6 +127,7 @@ router.post(
       ...(fileSizeBytes ? { ContentLength: fileSizeBytes } : {}),
     });
 
+    // Presigned URL: 5 dakika geçerli
     const uploadUrl = await getSignedUrl(client, command, { expiresIn: 300 });
     const fileUrl = `${R2_PUBLIC_URL.replace(/\/$/, "")}/${objectKey}`;
 

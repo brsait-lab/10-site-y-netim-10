@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
+import { addAuditLog } from "../lib/audit.js";
 
 const router = Router();
 
@@ -61,8 +62,7 @@ router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Re
   res.json(rows.map((n) => toDto(n, readMap.get(n.id) ?? [])));
 });
 
-// GÜVENLİK: siteId her zaman token'dan alınır — body.siteId görmezden gelinir.
-// Cross-tenant bildirim gönderimi tamamen engellenmiş.
+// GÜVENLİK: siteId her zaman token'dan alınır — cross-tenant bildirim imkansız.
 router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
   const { userId, role, siteId: tokenSiteId } = (req as AuthRequest).authUser;
   const body = req.body as {
@@ -117,15 +117,8 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
 
   if (role === "security") {
     const isOperational = (SECURITY_OPERATIONAL_TYPES as readonly string[]).includes(body.type);
-
-    if (isOperational) {
-      const toRoles = body.toRoles ?? [];
-      if (toRoles.includes("merchant")) {
-        res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
-        return;
-      }
-    } else {
-      const toRoles = body.toRoles ?? [];
+    const toRoles = body.toRoles ?? [];
+    if (!isOperational || toRoles.includes("merchant")) {
       if (toRoles.includes("merchant")) {
         res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
         return;
@@ -138,11 +131,19 @@ router.post("/notifications", requireAuth, blockRoles("merchant"), async (req: R
       type: body.type, title: body.title, message: body.message,
       fromUserId: body.fromUserId, fromName: body.fromName,
       toRoles: body.toRoles ?? [], toUserIds: body.toUserIds ?? [],
-      // GÜVENLİK: siteId her zaman token'dan — body.siteId kabul edilmez.
       siteId: tokenSiteId,
       readBy: [],
     },
   });
+
+  // Audit log: bildirim gönderme kaydı
+  await addAuditLog({
+    siteId: tokenSiteId,
+    action: "notification_sent",
+    performedBy: userId,
+    note: `Tür: ${body.type} — "${body.title}" — hedef roller: ${(body.toRoles ?? []).join(",")}`,
+  });
+
   res.status(201).json(toDto(row, []));
 });
 
@@ -150,7 +151,6 @@ router.patch("/notifications/:id/read", requireAuth, blockRoles("merchant"), asy
   const { id } = req.params as { id: string };
   const { userId, siteId } = (req as AuthRequest).authUser;
 
-  // GÜVENLİK: Bildirim bu siteye ait mi kontrol et
   const exists = await prisma.notification.findUnique({ where: { id }, select: { id: true, siteId: true } });
   if (!exists || exists.siteId !== siteId) { res.status(404).json({ message: "Bildirim bulunamadı." }); return; }
 

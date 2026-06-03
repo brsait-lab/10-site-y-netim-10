@@ -1,12 +1,16 @@
 /**
- * Central secrets validation module.
- * Call validateAllSecrets() once at startup (index.ts).
+ * Merkezi secret doğrulama modülü.
+ * Başlangıçta validateAllSecrets() çağrılır (index.ts).
  *
- * Rules enforced:
- *   - Each secret (JWT_SECRET, SESSION_SECRET, IBAN_SECRET) must be set in production.
- *   - Each secret must be at least 32 characters.
- *   - All three must be DISTINCT from each other (runtime value comparison).
- *   - In development, missing/weak secrets emit warnings instead of crashing.
+ * Üretimde fail-fast: eksik veya zayıf secret varsa uygulama başlamaz.
+ * Geliştirmede: uyarı verir, devam eder.
+ *
+ * Zorunlu secretlar:
+ *   JWT_SECRET, SESSION_SECRET, IBAN_SECRET — her biri ≥ 32 karakter, birbirinden farklı
+ *   DATABASE_URL — her zaman zorunlu
+ *
+ * Üretimde ek zorunlu ortam değişkenleri:
+ *   R2_ACCESS_KEY_ID, R2_SECRET_KEY, R2_BUCKET_NAME — R2 yapılandırıldıysa zorunlu
  */
 
 const IS_PRODUCTION = process.env["NODE_ENV"] === "production";
@@ -36,6 +40,7 @@ const SECRETS: SecretSpec[] = [
   },
 ];
 
+/** Üretimde uygulamanın başlamamasına neden olan hatalar. */
 function fatal(msg: string): never {
   throw new Error(`[SECRETS] STARTUP FAILURE: ${msg}`);
 }
@@ -49,9 +54,15 @@ function info(msg: string): void {
 }
 
 export function validateAllSecrets(): void {
+  // ── 1. DATABASE_URL: her ortamda zorunlu ─────────────────────────────────────
+  if (!process.env["DATABASE_URL"]) {
+    // Her zaman fatal — DB olmadan uygulama çalışamaz
+    fatal("DATABASE_URL ortam değişkeni eksik. Veritabanı bağlantısı kurulamaz.");
+  }
+
+  // ── 2. Kriptografik secretlar: üretimde zorunlu, geliştirmede fallback ───────
   const resolved: Record<string, string> = {};
 
-  // ── 1. Presence & length checks ─────────────────────────────────────────────
   for (const { envKey, label, devFallback } of SECRETS) {
     const value = process.env[envKey];
 
@@ -81,7 +92,7 @@ export function validateAllSecrets(): void {
     resolved[envKey] = value;
   }
 
-  // ── 2. Distinctness checks (all pairs must differ) ───────────────────────────
+  // ── 3. Secretlar birbirinden farklı olmalı ───────────────────────────────────
   const pairs: [string, string][] = [
     ["JWT_SECRET", "SESSION_SECRET"],
     ["JWT_SECRET", "IBAN_SECRET"],
@@ -89,7 +100,7 @@ export function validateAllSecrets(): void {
   ];
 
   for (const [a, b] of pairs) {
-    if (resolved[a] === resolved[b]) {
+    if (resolved[a] && resolved[b] && resolved[a] === resolved[b]) {
       const msg =
         `${a} ve ${b} aynı değeri paylaşıyor. ` +
         "Her secret birbirinden bağımsız, farklı bir değere sahip olmalıdır.";
@@ -98,9 +109,28 @@ export function validateAllSecrets(): void {
     }
   }
 
-  // ── 3. Summary ───────────────────────────────────────────────────────────────
-  const allSet = SECRETS.every(({ envKey }) => !!process.env[envKey]);
-  if (allSet) {
-    info("JWT_SECRET ✓  SESSION_SECRET ✓  IBAN_SECRET ✓  — tümü bağımsız ve geçerli.");
+  // ── 4. R2 konfigürasyon uyarıları (üretimde zorunlu, geliştirmede opsiyonel) ─
+  const r2Keys = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_KEY", "R2_BUCKET_NAME", "R2_PUBLIC_URL"];
+  const missingR2 = r2Keys.filter((k) => !process.env[k]);
+
+  if (missingR2.length > 0 && IS_PRODUCTION) {
+    warn(
+      `R2 dosya yükleme devre dışı: ${missingR2.join(", ")} eksik. ` +
+        "Dekont yükleme özelliği çalışmayacak.",
+    );
+  } else if (missingR2.length > 0) {
+    warn(`R2 yapılandırılmamış (${missingR2.join(", ")}). Dekont yükleme URL paste modunda çalışır.`);
   }
+
+  // ── 5. Özet ──────────────────────────────────────────────────────────────────
+  const allCryptoSet = SECRETS.every(({ envKey }) => !!process.env[envKey]);
+  const r2Ready = missingR2.length === 0;
+
+  info(
+    `DATABASE_URL ✓  ` +
+      `JWT_SECRET ${allCryptoSet ? "✓" : "⚠"}  ` +
+      `SESSION_SECRET ${allCryptoSet ? "✓" : "⚠"}  ` +
+      `IBAN_SECRET ${allCryptoSet ? "✓" : "⚠"}  ` +
+      `R2 ${r2Ready ? "✓" : "⚠ (devre dışı)"}`,
+  );
 }
