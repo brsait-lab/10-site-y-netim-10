@@ -6,10 +6,8 @@
  * Mevcut implementasyon Expo Push Notifications API'yi kullanır.
  * Token'lar User.pushToken ve User.pushPlatform alanlarında saklanır.
  *
- * Genişleme yolu:
- *   - FCMProvider: Firebase Cloud Messaging (Android native)
- *   - APNsProvider: Apple Push Notification Service (iOS native)
- *   - ExpoProvider: Expo Push (mevcut)
+ * PHASE B: sendTokenBatch() eklendi — BullMQ batch worker için token listesi
+ *          doğrudan kabul eder, DB sorgusu yapmaz.
  */
 
 import { prisma } from "../lib/prisma.js";
@@ -90,6 +88,7 @@ class ExpoPushProvider implements PushProvider {
 class PushService {
   constructor(private provider: PushProvider = new ExpoPushProvider()) {}
 
+  /** Hedef kullanıcıları DB'den çözümler, token'ları günceller, gönderir. */
   async sendToTargets(payload: PushPayload): Promise<PushResult> {
     const { siteId, title, body, data, toRoles, toUserIds } = payload;
 
@@ -111,9 +110,7 @@ class PushService {
       select: { id: true, pushToken: true, pushPlatform: true },
     });
 
-    const tokens = users
-      .map((u) => u.pushToken)
-      .filter((t): t is string => !!t);
+    const tokens = users.map((u) => u.pushToken).filter((t): t is string => !!t);
 
     if (tokens.length === 0) {
       return { sent: 0, failed: 0, skipped: 0 };
@@ -129,6 +126,21 @@ class PushService {
     logger.info({ siteId, sent, failed, total: tokens.length }, "Push bildirim gönderildi");
 
     return { sent, failed, skipped: users.length - tokens.length };
+  }
+
+  /**
+   * PHASE B: Önceden çözümlenmiş token listesine doğrudan gönderir.
+   * BullMQ chunk worker'ları tarafından kullanılır.
+   * DB sorgusu yapmaz — token'lar zaten çözümlenmiş olmalı.
+   */
+  async sendTokenBatch(
+    tokens: string[],
+    title: string,
+    body: string,
+    data?: Record<string, unknown>,
+  ): Promise<{ sent: number; failed: number }> {
+    if (tokens.length === 0) return { sent: 0, failed: 0 };
+    return this.provider.send(tokens, title, body, data);
   }
 
   useProvider(provider: PushProvider): void {

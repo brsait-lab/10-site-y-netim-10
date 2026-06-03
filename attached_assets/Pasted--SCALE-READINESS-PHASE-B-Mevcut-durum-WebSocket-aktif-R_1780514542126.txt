@@ -1,0 +1,205 @@
+# SCALE READINESS PHASE B
+
+Mevcut durum:
+
+* WebSocket aktif
+* Redis aktif
+* BullMQ aktif
+* Arşivleme aktif
+* Subscription altyapısı hazır
+* Multi-tenant izolasyon uygulanmış
+* Finansal transactionlar atomik
+
+Bu noktadan sonra öncelik güvenlik değil, 500+ site ve binlerce eşzamanlı kullanıcı altında performans ve ölçeklenebilirliktir.
+
+## PRIORITY 1 — Redis Cache Gerçek Kullanıma Alınsın
+
+Sadece cache altyapısının olması yeterli değil.
+
+Aşağıdaki endpointlerde cache uygulanmalı:
+
+### Dashboard Stats
+
+GET /payments/stats
+GET /expenses/stats
+GET /dashboard
+
+TTL: 30-60 saniye
+
+### Site Bilgileri
+
+GET /sites/:id
+
+TTL: 5 dakika
+
+### Subscription Durumu
+
+GET /subscription/status
+
+TTL: 5 dakika
+
+Amaç:
+
+* PostgreSQL sorgularını azaltmak
+* Dashboard açılış yükünü düşürmek
+* Mobil uygulama açılışını hızlandırmak
+
+---
+
+## PRIORITY 2 — NotificationRead Ölçekleme
+
+notification_reads tablosu uzun vadede en hızlı büyüyecek tablo.
+
+Hazırlık yapılmalı:
+
+* notification_reads için aylık partition stratejisi tasarlanmalı
+* notification_id + user_id unique korunmalı
+* eski kayıtlar arşive taşınabilmeli
+
+Amaç:
+
+500+ site sonrasında tablo büyümesinin sorguları yavaşlatmaması.
+
+---
+
+## PRIORITY 3 — Dashboard Stats Optimizasyonu
+
+Şu an çok sayıda COUNT sorgusu çalışıyorsa:
+
+* Redis cache
+  veya
+* materialized view
+
+kullanılmalı.
+
+Özellikle:
+
+* aidat ödenen
+* aidat bekleyen
+* aidat geciken
+
+sayıları her açılışta yeniden hesaplanmamalı.
+
+---
+
+## PRIORITY 4 — Push Notification Batching
+
+Toplu bildirimlerde:
+
+500 site × 1000 kullanıcı
+
+senaryosunda tek tek push gönderimi yapılmamalı.
+
+BullMQ job'ları:
+
+* 100'lük paketler
+* rate limit
+* retry
+
+ile gönderilmeli.
+
+Amaç:
+
+Expo / FCM limitlerine takılmamak.
+
+---
+
+## PRIORITY 5 — WebSocket Ölçekleme Hazırlığı
+
+Şu an tek instance yeterli.
+
+Ancak aşağıdaki yapı hazırlanmalı:
+
+Socket.IO Redis Adapter
+
+Ama hemen uygulanmasına gerek yok.
+
+Eşik:
+
+* 300+ site
+  veya
+* 10.000+ aktif websocket
+
+olduğunda devreye alınmalı.
+
+---
+
+## PRIORITY 6 — PostgreSQL Slow Query Monitoring
+
+Prisma query logger eklenmeli.
+
+Özellikle:
+
+* 200 ms üzeri sorgular warning
+* 1000 ms üzeri sorgular error
+
+olarak loglanmalı.
+
+Amaç:
+
+Büyüme sırasında darboğazları erken görmek.
+
+---
+
+## PRIORITY 7 — Load Test
+
+Gerçek kullanıcı gelmeden önce:
+
+Hedef testler:
+
+* 500 site
+* 50.000 kullanıcı
+* 5.000 eşzamanlı websocket
+* 1.000 eşzamanlı API isteği
+
+Senaryoları çalıştırılsın.
+
+K6 veya Artillery kullanılabilir.
+
+Amaç:
+
+Üretimde sürpriz yaşamamak.
+
+---
+
+## PRIORITY 8 — Replit Çıkış Planı
+
+Şimdilik Replit yeterli.
+
+Ancak mimari şu şekilde kalmalı:
+
+Mobile App
+→ API
+→ PostgreSQL
+→ Redis
+→ BullMQ
+
+Vendor lock-in oluşturulmamalı.
+
+İleride:
+
+* Fly.io
+* Railway
+* Render
+* DigitalOcean
+* AWS
+
+ortamlarına taşınabilecek şekilde devam edilmeli.
+
+---
+
+SONUÇ
+
+Bu aşamadan sonra yeni özellik geliştirmek yerine:
+
+* cache
+* query optimizasyonu
+* websocket ölçekleme
+* notification ölçekleme
+* load test
+
+öncelikli olmalıdır.
+
+Amaç:
+
+İlk günden itibaren 500+ siteyi kaldırabilecek mimariyi doğrulamak ve büyüme sırasında yeniden yazım ihtiyacını ortadan kaldırmaktır.

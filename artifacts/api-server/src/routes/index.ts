@@ -12,6 +12,7 @@ import chatsRouter from "./chats.js";
 import vendorsRouter from "./vendors.js";
 import adminTransfersRouter from "./admin-transfers.js";
 import uploadRouter from "./upload.js";
+import subscriptionRouter from "./subscription.js";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(chatsRouter);
 router.use(vendorsRouter);
 router.use(adminTransfersRouter);
 router.use(uploadRouter);
+router.use(subscriptionRouter);
 
 export default router;

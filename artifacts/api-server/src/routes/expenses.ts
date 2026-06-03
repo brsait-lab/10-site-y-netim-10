@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
+import { cacheGet, cacheSet, cacheDel } from "../lib/cache.js";
 
 const router = Router();
 const DEFAULT_LIMIT = 200;
@@ -59,6 +60,44 @@ async function addExpenseAuditLog(params: {
   });
 }
 
+// ── GET /expenses/stats — admin/manager only ──────────────────────────────────
+router.get("/expenses/stats", requireAuth, blockRoles("merchant", "security", "resident"), async (req: Request, res: Response) => {
+  const { siteId } = (req as AuthRequest).authUser;
+  const cacheKey = `cache:stats:expenses:${siteId}`;
+
+  const cached = await cacheGet(cacheKey);
+  if (cached) { res.json(cached); return; }
+
+  const year = req.query["year"] ? parseInt(req.query["year"] as string, 10) : undefined;
+  const month = req.query["month"] ? parseInt(req.query["month"] as string, 10) : undefined;
+
+  const baseWhere = {
+    siteId,
+    ...(year !== undefined ? { year } : {}),
+    ...(month !== undefined ? { month } : {}),
+  };
+
+  const [total, active, aggregate] = await Promise.all([
+    prisma.expense.count({ where: baseWhere }),
+    prisma.expense.count({ where: { ...baseWhere, cancelledAt: null } }),
+    prisma.expense.aggregate({
+      where: { ...baseWhere, cancelledAt: null },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const stats = {
+    total,
+    active,
+    cancelled: total - active,
+    totalAmount: Number(aggregate._sum.amount ?? 0),
+    period: year && month ? `${year}-${String(month).padStart(2, "0")}` : null,
+  };
+
+  await cacheSet(cacheKey, stats, 60);
+  res.json(stats);
+});
+
 router.get("/expenses", requireAuth, blockRoles("merchant", "security"), async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
   const includeCancelled = req.query["includeCancelled"] === "true";
@@ -113,6 +152,7 @@ router.post("/expenses", requireAuth, blockRoles("merchant", "resident", "securi
     note: `Gider: ${body.title} — ${body.amount} TL — kategori: ${body.category}`,
   });
 
+  await cacheDel(`cache:stats:expenses:${siteId}`);
   res.status(201).json(toExpenseDto(expense));
 });
 
@@ -138,6 +178,7 @@ router.delete("/expenses/:id", requireAuth, blockRoles("merchant", "resident", "
     note: `Gider iptal: ${expense.title} — ${expense.amount} TL`,
   });
 
+  await cacheDel(`cache:stats:expenses:${siteId}`);
   res.json(toExpenseDto(updated));
 });
 

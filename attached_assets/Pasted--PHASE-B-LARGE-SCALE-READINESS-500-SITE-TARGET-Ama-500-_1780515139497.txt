@@ -1,0 +1,213 @@
+# PHASE B — LARGE SCALE READINESS (500+ SITE TARGET)
+
+Amaç:
+
+* 500+ site
+* 50.000+ kullanıcı
+* 10.000+ eşzamanlı bağlantı
+* milyonlarca finansal kayıt
+
+senaryolarına hazırlanmak.
+
+---
+
+## TASK 1 — Dashboard Aggregation Layer
+
+Mevcut durum:
+
+Dashboard ve stats endpointleri doğrudan PostgreSQL COUNT sorguları çalıştırıyor.
+
+500+ site seviyesinde bu yaklaşım pahalı hale gelir.
+
+Yapılacaklar:
+
+### DashboardStats tablosu oluştur
+
+site_id
+period
+total_users
+total_payments
+paid_payments
+pending_payments
+overdue_payments
+total_expenses
+updated_at
+
+### Güncelleme
+
+BullMQ background job:
+
+payment_created
+payment_paid
+payment_cancelled
+expense_created
+
+eventlerinden sonra aggregate güncellensin.
+
+Dashboard endpointleri doğrudan bu tabloyu okusun.
+
+Amaç:
+
+Dashboard açılışında sıfır COUNT sorgusu.
+
+---
+
+## TASK 2 — NotificationRead Partition Strategy
+
+notification_reads tablosu gelecekte en hızlı büyüyecek tablo.
+
+Yapılacaklar:
+
+* PostgreSQL partition planı hazırla
+* aylık partition
+* archive stratejisi
+
+Henüz migration uygulama.
+
+Sadece üretim planını ve SQL tasarımını hazırla.
+
+Amaç:
+
+1 milyar+ satıra hazırlanmak.
+
+---
+
+## TASK 3 — Slow Query Monitoring
+
+Prisma query middleware ekle.
+
+Kurallar:
+
+100 ms üzeri → info
+250 ms üzeri → warn
+1000 ms üzeri → error
+
+Log alanları:
+
+query
+duration
+userId
+siteId
+requestId
+
+Amaç:
+
+Darboğazları erken görmek.
+
+---
+
+## TASK 4 — Queue Monitoring
+
+BullMQ queue health endpoint.
+
+GET /system/queues
+
+Admin only.
+
+Dönsün:
+
+waiting
+active
+completed
+failed
+delayed
+
+Amaç:
+
+Push veya background job sorunlarını görebilmek.
+
+---
+
+## TASK 5 — System Health Endpoint
+
+GET /system/health
+
+Kontroller:
+
+PostgreSQL
+Redis
+BullMQ
+WebSocket
+
+Response:
+
+status
+latency
+uptime
+
+Amaç:
+
+Monitoring sistemlerine hazır olmak.
+
+---
+
+## TASK 6 — Audit Log Optimization
+
+payment_audit_logs büyüyecek.
+
+Ek indexler:
+
+(site_id, created_at DESC)
+(action, created_at DESC)
+
+Amaç:
+
+Yıllar sonra bile audit sorgularının hızlı kalması.
+
+---
+
+## TASK 7 — Load Test Infrastructure
+
+K6 veya Artillery senaryoları oluştur.
+
+Senaryolar:
+
+100 kullanıcı
+1000 kullanıcı
+5000 kullanıcı
+
+Ölçümler:
+
+response time
+error rate
+memory
+CPU
+
+Amaç:
+
+Üretim öncesi kapasite ölçümü.
+
+---
+
+## TASK 8 — Production Metrics Dashboard
+
+Admin olmayan sistem yöneticileri için.
+
+Göster:
+
+aktif websocket sayısı
+dakikalık istek
+dakikalık hata
+queue uzunluğu
+DB bağlantı sayısı
+cache hit ratio
+
+Amaç:
+
+Operasyonel görünürlük.
+
+---
+
+ÇIKTI
+
+Her task için:
+
+* yapılan değişiklikler
+* migrationlar
+* yeni indexler
+* beklenen performans etkisi
+* riskler
+
+ayrı raporlansın.
+
+Yeni özellik geliştirmeden önce bu faz tamamlanmalı.

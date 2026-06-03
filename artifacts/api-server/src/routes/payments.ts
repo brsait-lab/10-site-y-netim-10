@@ -4,6 +4,7 @@ import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { addAuditLog } from "../lib/audit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
+import { cacheGet, cacheSet, cacheDel } from "../lib/cache.js";
 
 const router = Router();
 const DEFAULT_LIMIT = 200;
@@ -307,6 +308,14 @@ router.get("/user-payments", requireAuth, blockSecurity, async (req: Request, re
 router.get("/user-payments/stats", requireAuth, blockNonAdmin, async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
   const paymentId = req.query["paymentId"] as string | undefined;
+
+  // Site-wide stats (no paymentId filter) are cached for 30s
+  const cacheKey = paymentId ? null : `cache:stats:payments:${siteId}`;
+  if (cacheKey) {
+    const cached = await cacheGet(cacheKey);
+    if (cached) { res.json(cached); return; }
+  }
+
   const where = paymentId ? { siteId, paymentId } : { siteId };
 
   const [total, paid, pending, pendingApproval, rejected, cancelled] = await Promise.all([
@@ -318,10 +327,13 @@ router.get("/user-payments/stats", requireAuth, blockNonAdmin, async (req: Reque
     prisma.userPayment.count({ where: { ...where, status: "cancelled" } }),
   ]);
 
-  res.json({
+  const stats = {
     total, paid, pending, pending_approval: pendingApproval, rejected, cancelled,
     paidRate: total > 0 ? Math.round((paid / total) * 100) : 0,
-  });
+  };
+
+  if (cacheKey) await cacheSet(cacheKey, stats, 30);
+  res.json(stats);
 });
 
 // ── PATCH /user-payments/:id/pay ──────────────────────────────────────────────
@@ -456,6 +468,7 @@ router.patch("/user-payments/:id/approve", requireAuth, blockNonAdmin, async (re
   });
 
   await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "payment_approved", performedBy: userId, note: body.note });
+  await cacheDel(`cache:stats:payments:${siteId}`);
   res.json(toUserPaymentDto(updated));
 });
 
@@ -481,6 +494,7 @@ router.patch("/user-payments/:id/reject", requireAuth, blockNonAdmin, async (req
   });
 
   await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action: "payment_rejected", performedBy: userId, note: body.note });
+  await cacheDel(`cache:stats:payments:${siteId}`);
   res.json(toUserPaymentDto(updated));
 });
 
@@ -513,6 +527,7 @@ router.patch("/user-payments/:id/manual-pay", requireAuth, blockNonAdmin, async 
 
   const action = body.paymentMethod === "cash" ? "cash_collected" : "manual_collected";
   await addAuditLog({ siteId: existing.siteId, paymentId: existing.paymentId, userPaymentId: id, action, performedBy: userId, note: body.note ?? body.paymentMethod });
+  await cacheDel(`cache:stats:payments:${siteId}`);
   res.json(toUserPaymentDto(updated));
 });
 

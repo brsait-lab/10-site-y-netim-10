@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import { blockRoles } from "../middlewares/requireRole.js";
 import { encryptIban, decryptIban } from "../lib/ibanCrypto.js";
+import { cacheGet, cacheSet, cacheDelPattern } from "../lib/cache.js";
 
 const router = Router();
 
@@ -49,6 +50,14 @@ router.get("/sites/:id", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
+  const cacheVariant = role === "admin" && siteId === id ? "admin"
+    : role === "resident" && siteId === id ? "resident"
+    : "basic";
+  const cacheKey = `cache:site:${id}:${cacheVariant}`;
+
+  const cached = await cacheGet(cacheKey);
+  if (cached) { res.json(cached); return; }
+
   const site = await prisma.site.findUnique({ where: { id } });
   if (!site || site.deletedAt) {
     res.status(404).json({ message: "Site bulunamadı." });
@@ -77,6 +86,7 @@ router.get("/sites/:id", requireAuth, async (req: Request, res: Response) => {
     dto.iban = decryptIban(site.iban);
   }
 
+  await cacheSet(cacheKey, dto, 300);
   res.json(dto);
 });
 
@@ -111,6 +121,8 @@ router.patch(
 
     try {
       const updated = await prisma.site.update({ where: { id }, data: updates });
+      // Invalidate all cached variants for this site
+      await cacheDelPattern(`cache:site:${id}:*`);
       res.json({
         id: updated.id,
         name: updated.name,

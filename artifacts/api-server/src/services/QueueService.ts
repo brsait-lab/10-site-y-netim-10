@@ -4,17 +4,14 @@
  * Soyut kuyruk katmanı. Mevcut implementasyon in-memory (synchronous).
  * Gelecekte Redis + BullMQ veya RabbitMQ'ya geçiş için arayüz sabittir.
  *
- * Geçiş yolu:
- *   1. QueueProvider interface'ini implemente eden RedisQueueProvider yaz
- *   2. queueService = new QueueService(new RedisQueueProvider()) yap
- *   3. Uygulama kodu değişmez
+ * PHASE B: push_notification_chunk job türü eklendi (büyük site batching).
  */
 
 import { logger } from "../lib/logger.js";
 import { pushService } from "./PushService.js";
 
 export interface QueueJob {
-  type: "push_notification" | "email" | "sms" | "data_retention" | "backup";
+  type: "push_notification" | "push_notification_chunk" | "email" | "sms" | "data_retention" | "backup";
   payload: Record<string, unknown>;
   priority?: number;
   retryCount?: number;
@@ -72,6 +69,16 @@ class InMemoryQueueProvider implements QueueProvider {
           toRoles,
           toUserIds,
         });
+        break;
+      }
+      case "push_notification_chunk": {
+        const { tokens, title, body, data } = job.payload as {
+          tokens: string[];
+          title: string;
+          body: string;
+          data?: Record<string, unknown>;
+        };
+        await pushService.sendTokenBatch(tokens, title, body, data);
         break;
       }
       case "data_retention":
