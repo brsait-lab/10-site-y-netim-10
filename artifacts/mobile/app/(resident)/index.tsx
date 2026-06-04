@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -6,6 +6,17 @@ import { router } from "expo-router";
 import { useAuth, Site } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
+
+/** Parse "DD.MM.YYYY" or "YYYY-MM-DD" → Date, null if unparseable */
+function parseDueDate(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(raw)) {
+    const [d, m, y] = raw.split(".");
+    return new Date(`${y}-${m}-${d}`);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return new Date(raw);
+  return null;
+}
 
 function ActionCard({
   icon,
@@ -73,14 +84,41 @@ export default function ResidentHome() {
 
   const onRefresh = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
+  // All pending user payments for this resident
   const myUPs = userPayments.filter((up) => up.userId === user?.id && up.status === "pending");
+
   const pendingPaymentTotal = myUPs.reduce((sum, up) => {
     const p = payments.find((p) => p.id === up.paymentId);
     return sum + (p?.amount || 0);
   }, 0);
-  const openChats = chats.filter((c) => c.status === "open").length;
 
+  // Overdue: pending payments whose dueDate has already passed
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const overdueUPs = useMemo(() => {
+    return myUPs.filter((up) => {
+      const p = payments.find((pmt) => pmt.id === up.paymentId);
+      if (!p || p.cancelledAt) return false;
+      const due = parseDueDate((p as Record<string, unknown>).dueDate as string);
+      return due !== null && due < today;
+    });
+  }, [myUPs, payments, today]);
+
+  const overdueTotal = overdueUPs.reduce((sum, up) => {
+    const p = payments.find((pmt) => pmt.id === up.paymentId);
+    return sum + (p?.amount || 0);
+  }, 0);
+
+  const openChats = chats.filter((c) => c.status === "open").length;
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+
+  // For the Aidatlarım card: overdue takes red priority, pending stays yellow
+  const aidatHighlight = pendingPaymentTotal > 0;
+  const hasOverdue = overdueUPs.length > 0;
 
   return (
     <ScrollView
@@ -89,12 +127,14 @@ export default function ResidentHome() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
+      {/* Header */}
       <View>
         <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Merhaba,</Text>
         <Text style={[styles.name, { color: colors.foreground }]}>{user?.name}</Text>
         {site && <Text style={[styles.siteName, { color: colors.primary }]}>{site.name}</Text>}
       </View>
 
+      {/* Unit banner */}
       {user?.unitNo && (
         <View style={[styles.unitBanner, { backgroundColor: colors.primaryLight, borderRadius: 12 }]}>
           <Feather name="home" size={15} color={colors.primary} />
@@ -104,6 +144,47 @@ export default function ResidentHome() {
         </View>
       )}
 
+      {/* ── GECİKMİŞ AİDAT UYARISI ── */}
+      {hasOverdue && (
+        <Pressable
+          onPress={() => router.push("/(resident)/payments")}
+          style={[styles.overdueAlert, { borderRadius: 14 }]}
+        >
+          <View style={styles.overdueAlertInner}>
+            <View style={styles.overdueIconWrap}>
+              <Feather name="alert-triangle" size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.overdueTitle}>Gecikmiş Aidat Var!</Text>
+              <Text style={styles.overdueSub}>
+                {overdueUPs.length} ödeme · toplam{" "}
+                <Text style={{ fontFamily: "Inter_700Bold" }}>
+                  ₺{overdueTotal.toLocaleString("tr-TR")}
+                </Text>
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={16} color="#fff" />
+          </View>
+          <Text style={styles.overdueNote}>
+            Hemen öde — gecikme faizi işleyebilir
+          </Text>
+        </Pressable>
+      )}
+
+      {/* ── BEKLEYEN (vadesi geçmemiş) uyarısı ── */}
+      {!hasOverdue && pendingPaymentTotal > 0 && (
+        <Pressable
+          onPress={() => router.push("/(resident)/payments")}
+          style={[styles.pendingAlert, { backgroundColor: "#fef3c7", borderRadius: 12 }]}
+        >
+          <Feather name="clock" size={15} color="#92400e" />
+          <Text style={[styles.pendingAlertText, { color: "#92400e" }]}>
+            {myUPs.length} bekleyen aidat — ₺{pendingPaymentTotal.toLocaleString("tr-TR")}
+          </Text>
+          <Feather name="chevron-right" size={14} color="#92400e" />
+        </Pressable>
+      )}
+
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Panel</Text>
 
       <View style={styles.grid}>
@@ -111,10 +192,16 @@ export default function ResidentHome() {
           icon="credit-card"
           label="Aidatlarım"
           value={pendingPaymentTotal > 0 ? `₺${pendingPaymentTotal.toLocaleString("tr-TR")}` : undefined}
-          sub={pendingPaymentTotal > 0 ? "bekleyen borç" : "Borç yok"}
-          highlight={pendingPaymentTotal > 0}
-          badge={myUPs.length > 0 ? myUPs.length : undefined}
-          badgeColor="#f59e0b"
+          sub={
+            hasOverdue
+              ? `${overdueUPs.length} gecikmiş`
+              : pendingPaymentTotal > 0
+              ? "bekleyen borç"
+              : "Borç yok"
+          }
+          highlight={aidatHighlight}
+          badge={hasOverdue ? overdueUPs.length : myUPs.length > 0 ? myUPs.length : undefined}
+          badgeColor={hasOverdue ? "#ef4444" : "#f59e0b"}
           onPress={() => router.push("/(resident)/payments")}
         />
         <ActionCard
@@ -166,6 +253,38 @@ const styles = StyleSheet.create({
   unitBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12 },
   unitText: { fontSize: 14, fontFamily: "Inter_400Regular" },
   sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+
+  // Overdue alert — kırmızı, dikkat çekici
+  overdueAlert: {
+    backgroundColor: "#dc2626",
+    padding: 14,
+    gap: 6,
+    shadowColor: "#dc2626",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  overdueAlertInner: { flexDirection: "row", alignItems: "center", gap: 12 },
+  overdueIconWrap: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
+  },
+  overdueTitle: { fontSize: 15, fontFamily: "Inter_700Bold", color: "#fff" },
+  overdueSub: { fontSize: 13, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.9)", marginTop: 1 },
+  overdueNote: {
+    fontSize: 11, fontFamily: "Inter_400Regular",
+    color: "rgba(255,255,255,0.75)",
+    paddingLeft: 50,
+    marginTop: 2,
+  },
+
+  // Pending alert — sarı, hafif uyarı
+  pendingAlert: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12 },
+  pendingAlertText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+
+  // Action cards
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   card: {
     width: "47%", flexGrow: 1, padding: 16, gap: 6, borderWidth: 1,
