@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "WsFVQ267cG91Q_JLmBkFh"
 uri = "file://artifacts/mobile/assets/images/icon.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "zqBrFZYIs70wSMw3TKGOX"
+uri = "file://CAPACITY_REPORT.md"
+type = "text"
+title = "CAPACITY_REPORT.md"
