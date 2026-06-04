@@ -22,6 +22,7 @@ import {
   getExpenses as apiGetExpenses,
   createExpense as apiCreateExpense,
   deleteExpense as apiDeleteExpense,
+  getDashboardStats as apiGetDashboardStats,
   type NotificationDto,
   type PaymentDto,
   type UserPaymentDto,
@@ -30,9 +31,12 @@ import {
   type ChatDto,
   type ExpenseDto,
   type CreateExpenseRequest,
+  type DashboardStatsDto,
 } from "@workspace/api-client-react";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
+
+export type { DashboardStatsDto };
 
 export type NotificationType =
   | "noise"
@@ -61,6 +65,7 @@ interface DataContextType {
   chats: Chat[];
   unreadCount: number;
   pendingApprovalCount: number;
+  dashboardStats: DashboardStatsDto | null;
   sendNotification: (data: Omit<AppNotification, "id" | "createdAt" | "readBy">) => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   createPayment: (data: Omit<Payment, "id" | "createdAt">) => Promise<void>;
@@ -94,11 +99,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStatsDto | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const [n, p, up, m, pk, ch, ex] = await Promise.all([
+      const [n, p, up, m, pk, ch, ex, ds] = await Promise.all([
         getNotifications(),
         getPayments(),
         getUserPayments(),
@@ -106,6 +112,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         getPackages(),
         getChats(),
         user.role !== "security" ? apiGetExpenses() : Promise.resolve([]),
+        user.role === "admin" ? apiGetDashboardStats() : Promise.resolve(null),
       ]);
       setNotifications(n as AppNotification[]);
       setPayments(p as Payment[]);
@@ -114,6 +121,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPackages(pk as Package[]);
       setChats(ch as Chat[]);
       setExpenses(ex as Expense[]);
+      if (ds) setDashboardStats(ds as DashboardStatsDto);
     } catch {
       // ignore load errors silently
     }
@@ -262,6 +270,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         chats,
         unreadCount,
         pendingApprovalCount,
+        dashboardStats,
         sendNotification,
         markNotificationRead,
         createPayment,

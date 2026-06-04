@@ -65,11 +65,47 @@ function ActionCard({
   );
 }
 
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  accent,
+  onPress,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  label: string;
+  value: string;
+  sub?: string;
+  accent: string;
+  onPress?: () => void;
+}) {
+  const colors = useColors();
+  const Wrapper = onPress ? Pressable : View;
+
+  return (
+    <Wrapper
+      onPress={onPress}
+      style={[
+        styles.statCard,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      <View style={[styles.statIconWrap, { backgroundColor: accent + "18" }]}>
+        <Feather name={icon} size={18} color={accent} />
+      </View>
+      <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      {sub && <Text style={[styles.statSub, { color: accent }]}>{sub}</Text>}
+    </Wrapper>
+  );
+}
+
 export default function AdminDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, getSiteUsers } = useAuth();
-  const { payments, userPayments, notifications, unreadCount, refresh } = useData();
+  const { payments, userPayments, notifications, unreadCount, refresh, dashboardStats } = useData();
   const [siteUsers, setSiteUsers] = useState<User[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -94,9 +130,12 @@ export default function AdminDashboard() {
   const paidAmount = siteUPs
     .filter((up) => up.status === "paid")
     .reduce((sum, up) => sum + (sitePayments.find((p) => p.id === up.paymentId)?.amount || 0), 0);
-  const pendingAmount = siteUPs
-    .filter((up) => up.status === "pending")
-    .reduce((sum, up) => sum + (sitePayments.find((p) => p.id === up.paymentId)?.amount || 0), 0);
+
+  // Dashboard stats — server-side aggregated (60s cache)
+  const aktifKullanici = dashboardStats?.totalUsers ?? activeResidents;
+  const bekleyenOdeme  = dashboardStats?.pendingPayments ?? siteUPs.filter((up) => up.status === "pending").length;
+  const gecikmisDurum  = dashboardStats?.overduePayments ?? 0;
+  const toplamGider    = dashboardStats?.totalExpenseAmount ?? 0;
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -107,6 +146,7 @@ export default function AdminDashboard() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
+      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Hoş geldiniz,</Text>
@@ -115,6 +155,7 @@ export default function AdminDashboard() {
         <LogoBadge size={44} bgColor={colors.primary} iconColor="#fff" />
       </View>
 
+      {/* Pending user alert */}
       {pendingCount > 0 && (
         <Pressable
           onPress={() => router.push("/(admin)/users")}
@@ -128,6 +169,59 @@ export default function AdminDashboard() {
         </Pressable>
       )}
 
+      {/* Overdue alert */}
+      {gecikmisDurum > 0 && (
+        <Pressable
+          onPress={() => router.push("/(admin)/payments")}
+          style={[styles.alertBanner, { backgroundColor: "#fee2e2", borderRadius: 12 }]}
+        >
+          <Feather name="alert-circle" size={15} color="#b91c1c" />
+          <Text style={[styles.alertText, { color: "#b91c1c" }]}>
+            {gecikmisDurum} gecikmiş aidat — hemen kontrol et
+          </Text>
+          <Feather name="chevron-right" size={14} color="#b91c1c" />
+        </Pressable>
+      )}
+
+      {/* ── İstatistikler ── */}
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Site İstatistikleri</Text>
+
+      <View style={styles.statsRow}>
+        <StatCard
+          icon="users"
+          label="Aktif Kullanıcı"
+          value={String(aktifKullanici)}
+          sub={`${activeResidents} sakin`}
+          accent="#3b82f6"
+          onPress={() => router.push("/(admin)/users")}
+        />
+        <StatCard
+          icon="clock"
+          label="Bekleyen Ödeme"
+          value={String(bekleyenOdeme)}
+          sub={bekleyenOdeme > 0 ? "işlem bekliyor" : "temiz ✓"}
+          accent="#f59e0b"
+          onPress={() => router.push("/(admin)/payments")}
+        />
+        <StatCard
+          icon="alert-circle"
+          label="Gecikmiş Aidat"
+          value={String(gecikmisDurum)}
+          sub={gecikmisDurum > 0 ? "vadesi geçti" : "yok ✓"}
+          accent={gecikmisDurum > 0 ? "#ef4444" : "#10b981"}
+          onPress={() => router.push("/(admin)/payments")}
+        />
+        <StatCard
+          icon="trending-down"
+          label="Toplam Gider"
+          value={`₺${toplamGider.toLocaleString("tr-TR", { maximumFractionDigits: 0 })}`}
+          sub={`${dashboardStats?.totalExpenses ?? 0} kayıt`}
+          accent="#8b5cf6"
+          onPress={() => router.push("/(admin)/payments")}
+        />
+      </View>
+
+      {/* ── Hızlı Erişim ── */}
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Hızlı Erişim</Text>
 
       <View style={styles.grid}>
@@ -144,13 +238,15 @@ export default function AdminDashboard() {
           icon="credit-card"
           label="Aidat Takibi"
           sub={`${sitePayments.length} kayıt`}
+          badge={gecikmisDurum > 0 ? gecikmisDurum : undefined}
+          badgeColor="#ef4444"
           onPress={() => router.push("/(admin)/payments")}
         />
         <ActionCard
           icon="trending-up"
           label="Gelir / Gider"
           value={`₺${paidAmount.toLocaleString("tr-TR")}`}
-          sub={`₺${pendingAmount.toLocaleString("tr-TR")} bekliyor`}
+          sub={`₺${toplamGider.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} gider`}
           onPress={() => router.push("/(admin)/payments")}
           accent="#10b981"
         />
@@ -170,13 +266,14 @@ export default function AdminDashboard() {
         />
         <ActionCard
           icon="bar-chart-2"
-          label="Site İstatistikleri"
-          sub={`${activeResidents} aktif sakin`}
+          label="Site Üyeleri"
+          sub={`${siteUsers.filter((u) => u.role !== "admin").length} kişi`}
           onPress={() => router.push("/(admin)/users")}
           accent="#3b82f6"
         />
       </View>
 
+      {/* ── Son Üyeler ── */}
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Son Üyeler</Text>
       <View style={[styles.listCard, { backgroundColor: colors.card, borderRadius: 14, borderColor: colors.border }]}>
         {siteUsers.filter((u) => u.role !== "admin").slice(0, 5).reverse().map((u, i, arr) => (
@@ -211,6 +308,13 @@ export default function AdminDashboard() {
           </View>
         )}
       </View>
+
+      {/* Stats timestamp */}
+      {dashboardStats && (
+        <Text style={[styles.updatedAt, { color: colors.mutedForeground }]}>
+          İstatistikler: {new Date(dashboardStats.updatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} itibarıyla
+        </Text>
+      )}
     </ScrollView>
   );
 }
@@ -223,6 +327,20 @@ const styles = StyleSheet.create({
   alertBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12 },
   alertText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
   sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+
+  // ── Stat cards ───────────────────────────────────────────────────────────────
+  statsRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  statCard: {
+    width: "47%", flexGrow: 1, padding: 14, gap: 4,
+    borderRadius: 14, borderWidth: 1,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
+  },
+  statIconWrap: { padding: 8, borderRadius: 10, alignSelf: "flex-start", marginBottom: 4 },
+  statValue: { fontSize: 22, fontFamily: "Inter_700Bold" },
+  statLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  statSub: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 1 },
+
+  // ── Action cards ─────────────────────────────────────────────────────────────
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   card: {
     width: "47%", flexGrow: 1, padding: 16, gap: 6, borderWidth: 1,
@@ -236,6 +354,8 @@ const styles = StyleSheet.create({
   cardLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   cardSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
   cardChevron: { alignSelf: "flex-end", marginTop: 2 },
+
+  // ── Member list ───────────────────────────────────────────────────────────────
   listCard: { borderWidth: 1, overflow: "hidden" },
   userRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
   avatar: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
@@ -246,4 +366,5 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   empty: { padding: 28, alignItems: "center", gap: 8 },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  updatedAt: { fontSize: 11, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: -8 },
 });

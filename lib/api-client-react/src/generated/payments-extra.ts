@@ -85,6 +85,25 @@ export const getSite = async (
 ): Promise<SiteDto> =>
   customFetch<SiteDto>(`/api/sites/${id}`, options);
 
+// ── Dashboard Stats (Phase B — GET /dashboard/stats) ─────────────────────────
+
+export interface DashboardStatsDto {
+  siteId: string;
+  totalUsers: number;
+  totalPayments: number;
+  paidPayments: number;
+  pendingPayments: number;
+  overduePayments: number;
+  totalExpenses: number;
+  totalExpenseAmount: number;
+  updatedAt: string;
+}
+
+export const getDashboardStats = async (
+  options?: RequestInit,
+): Promise<DashboardStatsDto> =>
+  customFetch<DashboardStatsDto>(`/api/dashboard/stats`, options);
+
 // ── KRİTİK 5: R2 Presigned Upload ────────────────────────────────────────────
 
 export interface PresignedUploadRequest {
