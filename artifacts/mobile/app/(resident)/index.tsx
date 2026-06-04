@@ -70,11 +70,31 @@ function ActionCard({
   );
 }
 
+function ResidentLoadingShell({ colors, topPad }: { colors: ReturnType<typeof useColors>; topPad: number }) {
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ paddingTop: topPad + 16, paddingHorizontal: 16, gap: 16 }}>
+      <View style={{ gap: 8 }}>
+        <View style={{ width: 80, height: 13, borderRadius: 6, backgroundColor: colors.muted }} />
+        <View style={{ width: 160, height: 24, borderRadius: 8, backgroundColor: colors.muted }} />
+        <View style={{ width: 120, height: 14, borderRadius: 6, backgroundColor: colors.muted }} />
+      </View>
+      <View style={{ height: 44, borderRadius: 12, backgroundColor: colors.muted }} />
+      {[1, 2, 3].map((i) => (
+        <View key={i} style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flex: 1, height: 88, borderRadius: 16, backgroundColor: colors.muted }} />
+          <View style={{ flex: 1, height: 88, borderRadius: 16, backgroundColor: colors.muted }} />
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
 export default function ResidentHome() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, sites } = useAuth();
-  const { payments, userPayments, unreadCount, chats, refresh } = useData();
+  const { payments, userPayments, unreadCount, chats, refresh, loading, loadError } = useData();
   const [site, setSite] = useState<Site | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -116,9 +136,25 @@ export default function ResidentHome() {
   const openChats = chats.filter((c) => c.status === "open").length;
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
-  // For the Aidatlarım card: overdue takes red priority, pending stays yellow
   const aidatHighlight = pendingPaymentTotal > 0;
   const hasOverdue = overdueUPs.length > 0;
+
+  if (loading && payments.length === 0 && userPayments.length === 0) {
+    return <ResidentLoadingShell colors={colors} topPad={topPad} />;
+  }
+
+  if (loadError && payments.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 }}>
+        <Feather name="wifi-off" size={40} color={colors.mutedForeground} />
+        <Text style={{ fontSize: 16, fontFamily: "Inter_600SemiBold", color: colors.foreground, textAlign: "center" }}>Veriler yüklenemedi</Text>
+        <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground, textAlign: "center" }}>{loadError}</Text>
+        <Pressable onPress={onRefresh} style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 }}>
+          <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Tekrar Dene</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <ScrollView

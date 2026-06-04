@@ -101,11 +101,32 @@ function StatCard({
   );
 }
 
+function LoadingShell({ colors, topPad }: { colors: ReturnType<typeof useColors>; topPad: number }) {
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ paddingTop: topPad + 16, paddingHorizontal: 16, gap: 16 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <View style={{ gap: 8 }}>
+          <View style={{ width: 90, height: 13, borderRadius: 6, backgroundColor: colors.muted }} />
+          <View style={{ width: 150, height: 24, borderRadius: 8, backgroundColor: colors.muted }} />
+        </View>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.muted }} />
+      </View>
+      {[1, 2, 3, 4].map((i) => (
+        <View key={i} style={{ flexDirection: "row", gap: 10 }}>
+          <View style={{ flex: 1, height: 96, borderRadius: 14, backgroundColor: colors.muted }} />
+          <View style={{ flex: 1, height: 96, borderRadius: 14, backgroundColor: colors.muted }} />
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
 export default function AdminDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, getSiteUsers } = useAuth();
-  const { payments, userPayments, notifications, unreadCount, refresh, dashboardStats } = useData();
+  const { payments, userPayments, notifications, unreadCount, refresh, dashboardStats, loading, loadError } = useData();
   const [siteUsers, setSiteUsers] = useState<User[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -138,6 +159,23 @@ export default function AdminDashboard() {
   const toplamGider    = dashboardStats?.totalExpenseAmount ?? 0;
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+
+  if (loading && siteUsers.length === 0 && !dashboardStats) {
+    return <LoadingShell colors={colors} topPad={topPad} />;
+  }
+
+  if (loadError && siteUsers.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 }}>
+        <Feather name="wifi-off" size={40} color={colors.mutedForeground} />
+        <Text style={{ fontSize: 16, fontFamily: "Inter_600SemiBold", color: colors.foreground, textAlign: "center" }}>Veriler yüklenemedi</Text>
+        <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: colors.mutedForeground, textAlign: "center" }}>{loadError}</Text>
+        <Pressable onPress={onRefresh} style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 }}>
+          <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Tekrar Dene</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <ScrollView

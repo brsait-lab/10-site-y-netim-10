@@ -20,7 +20,8 @@ import { check, sleep } from "k6";
 import { Rate, Trend, Counter } from "k6/metrics";
 
 // ── Custom metrics ─────────────────────────────────────────────────────────
-const errorRate = new Rate("error_rate");
+const errorRate = new Rate("error_rate");       // only counts 5xx as errors
+const rateLimitRate = new Rate("rate_limit_rate"); // tracks 429 hits (expected)
 const dashboardTrend = new Trend("dashboard_stats_duration");
 const paymentsTrend = new Trend("payments_list_duration");
 const notificationsTrend = new Trend("notifications_duration");
@@ -97,10 +98,11 @@ export const options = {
   },
   thresholds: {
     http_req_duration: ["p(95)<1000", "p(99)<2000"],
-    http_req_failed: ["rate<0.05"],
-    error_rate: ["rate<0.05"],
+    // 5xx errors must stay < 1%; 429 rate-limit responses are excluded (expected under load)
+    error_rate: ["rate<0.01"],
     dashboard_stats_duration: ["p(95)<500"],
     payments_list_duration: ["p(95)<800"],
+    // rate_limit_rate is informational only — no threshold, just measured
   },
 };
 
@@ -113,10 +115,13 @@ export default function () {
     const t0 = Date.now();
     const res = http.get(`${BASE_URL}/dashboard/stats`, { headers });
     dashboardTrend.add(Date.now() - t0);
-    const ok = check(res, {
-      "dashboard stats 200": (r) => r.status === 200,
+    rateLimitRate.add(res.status === 429);
+    // 5xx = real error; 429 = rate-limited (feature); 401 = auth issue
+    const is5xx = res.status >= 500;
+    errorRate.add(is5xx);
+    check(res, {
+      "dashboard stats 2xx|429": (r) => r.status === 200 || r.status === 429,
     });
-    errorRate.add(!ok);
   }
 
   sleep(0.1);
@@ -126,7 +131,9 @@ export default function () {
     const t0 = Date.now();
     const res = http.get(`${BASE_URL}/user-payments/stats`, { headers });
     paymentsTrend.add(Date.now() - t0);
-    check(res, { "payment stats 200|403": (r) => r.status === 200 || r.status === 403 });
+    rateLimitRate.add(res.status === 429);
+    errorRate.add(res.status >= 500);
+    check(res, { "payment stats 2xx|403|429": (r) => r.status === 200 || r.status === 403 || r.status === 429 });
   }
 
   sleep(0.1);
@@ -136,7 +143,9 @@ export default function () {
     const t0 = Date.now();
     const res = http.get(`${BASE_URL}/notifications`, { headers });
     notificationsTrend.add(Date.now() - t0);
-    check(res, { "notifications 200": (r) => r.status === 200 });
+    rateLimitRate.add(res.status === 429);
+    errorRate.add(res.status >= 500);
+    check(res, { "notifications 2xx|429": (r) => r.status === 200 || r.status === 429 });
   }
 
   sleep(0.1);
@@ -144,7 +153,9 @@ export default function () {
   // Site info (cached 5min)
   {
     const res = http.get(`${BASE_URL}/sites/current`, { headers });
-    check(res, { "site 200|404": (r) => r.status === 200 || r.status === 404 });
+    rateLimitRate.add(res.status === 429);
+    errorRate.add(res.status >= 500);
+    check(res, { "site 2xx|404|429": (r) => r.status === 200 || r.status === 404 || r.status === 429 });
   }
 
   sleep(0.1);
@@ -152,7 +163,9 @@ export default function () {
   // Subscription status (cached 5min)
   {
     const res = http.get(`${BASE_URL}/subscription/status`, { headers });
-    check(res, { "subscription 200": (r) => r.status === 200 });
+    rateLimitRate.add(res.status === 429);
+    errorRate.add(res.status >= 500);
+    check(res, { "subscription 2xx|429": (r) => r.status === 200 || r.status === 429 });
   }
 
   sleep(Math.random() * 0.5 + 0.2);

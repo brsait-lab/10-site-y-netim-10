@@ -66,6 +66,8 @@ interface DataContextType {
   unreadCount: number;
   pendingApprovalCount: number;
   dashboardStats: DashboardStatsDto | null;
+  loading: boolean;
+  loadError: string | null;
   sendNotification: (data: Omit<AppNotification, "id" | "createdAt" | "readBy">) => Promise<void>;
   markNotificationRead: (notificationId: string) => Promise<void>;
   createPayment: (data: Omit<Payment, "id" | "createdAt">) => Promise<void>;
@@ -100,9 +102,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [packages, setPackages] = useState<Package[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStatsDto | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
+    setLoading(true);
+    setLoadError(null);
     try {
       const [n, p, up, m, pk, ch, ex, ds] = await Promise.all([
         getNotifications(),
@@ -122,8 +128,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setChats(ch as Chat[]);
       setExpenses(ex as Expense[]);
       if (ds) setDashboardStats(ds as DashboardStatsDto);
-    } catch {
-      // ignore load errors silently
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Veriler yüklenemedi";
+      setLoadError(msg);
+    } finally {
+      setLoading(false);
     }
   }, [user]);
 
@@ -271,6 +280,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         unreadCount,
         pendingApprovalCount,
         dashboardStats,
+        loading,
+        loadError,
         sendNotification,
         markNotificationRead,
         createPayment,

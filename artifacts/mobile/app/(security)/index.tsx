@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -54,7 +54,7 @@ export default function SecurityDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, sites } = useAuth();
-  const { packages, unreadCount, chats, refresh } = useData();
+  const { packages, unreadCount, chats, refresh, loading, loadError } = useData();
   const [refreshing, setRefreshing] = useState(false);
   const [site, setSite] = useState<Site | null>(null);
 
@@ -73,6 +73,27 @@ export default function SecurityDashboard() {
   const openChats = chats.filter((c) => c.status === "open").length;
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+
+  if (loading && packages.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: "center", justifyContent: "center", gap: 12 }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ fontSize: 14, fontFamily: "Inter_400Regular", color: colors.mutedForeground }}>Yükleniyor…</Text>
+      </View>
+    );
+  }
+
+  if (loadError && packages.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 }}>
+        <Feather name="wifi-off" size={40} color={colors.mutedForeground} />
+        <Text style={{ fontSize: 16, fontFamily: "Inter_600SemiBold", color: colors.foreground, textAlign: "center" }}>Veriler yüklenemedi</Text>
+        <Pressable onPress={onRefresh} style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10 }}>
+          <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Tekrar Dene</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
