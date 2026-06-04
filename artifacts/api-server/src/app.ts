@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import express, { type Express, Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -111,6 +112,16 @@ app.use("/api", router);
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   const authUser = (req as AuthRequest).authUser;
+
+  // Report to Sentry (no-op when DSN not configured)
+  Sentry.withScope((scope) => {
+    scope.setUser({ id: authUser?.userId, siteId: authUser?.siteId });
+    scope.setTag("role", authUser?.role ?? "anonymous");
+    scope.setExtra("requestId", (req as Request & { id?: string }).id);
+    scope.setExtra("url", req.url?.split("?")[0]);
+    scope.setExtra("method", req.method);
+    Sentry.captureException(err);
+  });
 
   logger.error(
     {

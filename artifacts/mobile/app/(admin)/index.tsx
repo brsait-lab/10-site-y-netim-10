@@ -12,7 +12,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth, User } from "@/context/AuthContext";
-import { useData } from "@/context/DataContext";
+import { useData, type DashboardStatsDto } from "@/context/DataContext";
+import { useSocket } from "@/context/SocketContext";
 import { useColors } from "@/hooks/useColors";
 import { LogoBadge } from "@/components/TreeLogo";
 
@@ -126,9 +127,11 @@ export default function AdminDashboard() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, getSiteUsers } = useAuth();
-  const { payments, userPayments, notifications, unreadCount, refresh, dashboardStats, loading, loadError } = useData();
+  const { payments, userPayments, unreadCount, refresh, dashboardStats, loading, loadError } = useData();
+  const { onDashboardStatsUpdated, connected } = useSocket();
   const [siteUsers, setSiteUsers] = useState<User[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [liveStats, setLiveStats] = useState<DashboardStatsDto | null>(null);
 
   const loadUsers = useCallback(async () => {
     if (!user) return;
@@ -137,6 +140,14 @@ export default function AdminDashboard() {
   }, [user, getSiteUsers]);
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
+
+  // Real-time dashboard stats from WebSocket (overrides polled data when available)
+  useEffect(() => {
+    const unsubscribe = onDashboardStatsUpdated((stats) => {
+      setLiveStats(stats);
+    });
+    return unsubscribe;
+  }, [onDashboardStatsUpdated]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -152,11 +163,12 @@ export default function AdminDashboard() {
     .filter((up) => up.status === "paid")
     .reduce((sum, up) => sum + (sitePayments.find((p) => p.id === up.paymentId)?.amount || 0), 0);
 
-  // Dashboard stats — server-side aggregated (60s cache)
-  const aktifKullanici = dashboardStats?.totalUsers ?? activeResidents;
-  const bekleyenOdeme  = dashboardStats?.pendingPayments ?? siteUPs.filter((up) => up.status === "pending").length;
-  const gecikmisDurum  = dashboardStats?.overduePayments ?? 0;
-  const toplamGider    = dashboardStats?.totalExpenseAmount ?? 0;
+  // Live stats via WS take priority; fall back to polled dashboardStats, then local calculations
+  const activeStats = liveStats ?? dashboardStats;
+  const aktifKullanici = activeStats?.totalUsers ?? activeResidents;
+  const bekleyenOdeme  = activeStats?.pendingPayments ?? siteUPs.filter((up) => up.status === "pending").length;
+  const gecikmisDurum  = activeStats?.overduePayments ?? 0;
+  const toplamGider    = activeStats?.totalExpenseAmount ?? 0;
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -347,11 +359,14 @@ export default function AdminDashboard() {
         )}
       </View>
 
-      {/* Stats timestamp */}
-      {dashboardStats && (
-        <Text style={[styles.updatedAt, { color: colors.mutedForeground }]}>
-          İstatistikler: {new Date(dashboardStats.updatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} itibarıyla
-        </Text>
+      {/* Stats timestamp + live indicator */}
+      {activeStats && (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: -8 }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: connected ? "#10b981" : "#9ca3af" }} />
+          <Text style={[styles.updatedAt, { color: colors.mutedForeground, marginTop: 0 }]}>
+            {liveStats ? "Canlı · " : ""}{new Date(activeStats.updatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} itibarıyla
+          </Text>
+        </View>
       )}
     </ScrollView>
   );

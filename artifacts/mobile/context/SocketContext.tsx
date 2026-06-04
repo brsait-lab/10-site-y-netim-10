@@ -2,11 +2,14 @@ import React, { createContext, useCallback, useContext, useEffect, useRef } from
 import { io, type Socket } from "socket.io-client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "./AuthContext";
+import type { DashboardStatsDto } from "./DataContext";
 
 interface SocketContextType {
   joinChat: (chatId: string) => void;
   leaveChat: (chatId: string) => void;
   onNewMessage: (handler: (msg: unknown) => void) => () => void;
+  onDashboardStatsUpdated: (handler: (stats: DashboardStatsDto) => void) => () => void;
+  onSiteNotification: (handler: (payload: unknown) => void) => () => void;
   connected: boolean;
 }
 
@@ -14,6 +17,8 @@ const SocketContext = createContext<SocketContextType>({
   joinChat: () => {},
   leaveChat: () => {},
   onNewMessage: () => () => {},
+  onDashboardStatsUpdated: () => () => {},
+  onSiteNotification: () => () => {},
   connected: false,
 });
 
@@ -86,8 +91,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     return () => { s.off("new_message", handler); };
   }, []);
 
+  const onDashboardStatsUpdated = useCallback((handler: (stats: DashboardStatsDto) => void) => {
+    const s = socketRef.current;
+    if (!s) return () => {};
+    s.on("dashboard_stats_updated", handler);
+    return () => { s.off("dashboard_stats_updated", handler); };
+  }, []);
+
+  const onSiteNotification = useCallback((handler: (payload: unknown) => void) => {
+    const s = socketRef.current;
+    if (!s) return () => {};
+    s.on("site_notification", handler);
+    return () => { s.off("site_notification", handler); };
+  }, []);
+
   return (
-    <SocketContext.Provider value={{ joinChat, leaveChat, onNewMessage, connected }}>
+    <SocketContext.Provider value={{ joinChat, leaveChat, onNewMessage, onDashboardStatsUpdated, onSiteNotification, connected }}>
       {children}
     </SocketContext.Provider>
   );

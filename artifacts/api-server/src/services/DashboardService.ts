@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { cacheDel } from "../lib/cache.js";
+import { getIO } from "../lib/wsState.js";
 
 export interface DashboardStatsDto {
   siteId: string;
@@ -90,6 +91,23 @@ class DashboardService {
 
       await cacheDel(`cache:dashboard:${siteId}`);
       logger.debug({ siteId }, "[DASHBOARD] Stats güncellendi ✓");
+
+      // Real-time push — reuse already-computed values to avoid extra DB query
+      const io = getIO();
+      if (io) {
+        const now = new Date().toISOString();
+        io.to(`site:${siteId}`).emit("dashboard_stats_updated", {
+          siteId,
+          totalUsers,
+          totalPayments,
+          paidPayments,
+          pendingPayments,
+          overduePayments,
+          totalExpenses: expenseAgg._count.id,
+          totalExpenseAmount: Number(expenseAgg._sum.amount ?? 0),
+          updatedAt: now,
+        } satisfies DashboardStatsDto);
+      }
     } catch (err) {
       logger.error({ err, siteId }, "[DASHBOARD] Stats güncellenemedi");
       throw err;
