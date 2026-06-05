@@ -101,6 +101,27 @@ chatService.useProvider(new WebSocketChatProvider(io));
 setIO(io);
 logger.info("[WS] Socket.IO + WebSocketChatProvider aktif ✓");
 
+// ── Socket.IO Redis Adapter (multi-instance scaling) ──────────────────────────
+// Enable with: REDIS_ADAPTER_ENABLED=true
+// Required when running 2+ API server instances behind a load balancer.
+// Broadcasts (io.to(room).emit) fan out across all instances via Redis pub/sub.
+if (process.env["REDIS_ADAPTER_ENABLED"] === "true") {
+  (async () => {
+    try {
+      const { createAdapter } = await import("@socket.io/redis-adapter");
+      const { getRedis } = await import("./lib/redis.js");
+      const pubClient = getRedis();
+      const subClient = pubClient.duplicate();
+      io.adapter(createAdapter(pubClient, subClient));
+      logger.info("[WS] Socket.IO Redis adapter aktif ✓ (çok instance modu)");
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, "[WS] Redis adapter başlatılamadı — tek instance modunda devam ediliyor");
+    }
+  })();
+} else {
+  logger.info("[WS] Socket.IO tek instance modunda çalışıyor (REDIS_ADAPTER_ENABLED=false)");
+}
+
 // ── BullMQ/Redis queue (graceful degradation) ─────────────────────────────
 let bullmqProvider: import("./services/BullMQQueueProvider.js").BullMQQueueProvider | null = null;
 

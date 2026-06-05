@@ -31,7 +31,7 @@ function getJwtSecret(): string {
 const BCRYPT_ROUNDS = 10;
 
 export function signToken(payload: AuthUser): string {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: "30d" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "24h" });
 }
 
 export function verifyToken(token: string): AuthUser {

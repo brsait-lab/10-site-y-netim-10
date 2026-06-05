@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { randomBytes } from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import {
   signToken,
@@ -9,6 +10,43 @@ import { requireAuth, AuthRequest } from "../middlewares/requireAuth.js";
 import type { User } from "@prisma/client";
 
 const router = Router();
+
+const REFRESH_TOKEN_BYTES = 64;
+const REFRESH_TOKEN_TTL_DAYS = 30;
+
+function generateRefreshToken(): string {
+  return randomBytes(REFRESH_TOKEN_BYTES).toString("hex");
+}
+
+function refreshTokenExpiresAt(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + REFRESH_TOKEN_TTL_DAYS);
+  return d;
+}
+
+async function issueTokenPair(user: User): Promise<{ accessToken: string; refreshToken: string }> {
+  const accessToken = signToken({
+    userId: user.id,
+    role: user.role,
+    siteId: user.siteId,
+    email: user.email,
+    sessionVersion: user.sessionVersion,
+  });
+
+  const rawToken = generateRefreshToken();
+  const family = randomBytes(16).toString("hex");
+
+  await prisma.refreshToken.create({
+    data: {
+      token: rawToken,
+      userId: user.id,
+      family,
+      expiresAt: refreshTokenExpiresAt(),
+    },
+  });
+
+  return { accessToken, refreshToken: rawToken };
+}
 
 function generateJoinCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -94,14 +132,117 @@ router.post("/auth/login", async (req: Request, res: Response) => {
     return;
   }
 
-  const token = signToken({
+  const { accessToken, refreshToken } = await issueTokenPair(user);
+  res.json({ user: toUserDto(user), token: accessToken, accessToken, refreshToken });
+});
+
+// ─── REFRESH ──────────────────────────────────────────────────────────────────
+// POST /auth/refresh — exchange a valid refresh token for a new access+refresh pair
+router.post("/auth/refresh", async (req: Request, res: Response) => {
+  const { refreshToken } = req.body as { refreshToken?: string };
+  if (!refreshToken) {
+    res.status(400).json({ message: "refreshToken zorunludur." });
+    return;
+  }
+
+  const stored = await prisma.refreshToken.findUnique({
+    where: { token: refreshToken },
+    include: { user: true },
+  });
+
+  if (!stored) {
+    res.status(401).json({ message: "Geçersiz refresh token." });
+    return;
+  }
+
+  // Detect revoked token — possible reuse attack: revoke entire family
+  if (stored.revokedAt) {
+    await prisma.refreshToken.updateMany({
+      where: { family: stored.family, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    res.status(401).json({ message: "Refresh token iptal edilmiş. Lütfen tekrar giriş yapın." });
+    return;
+  }
+
+  if (stored.expiresAt < new Date()) {
+    await prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { revokedAt: new Date() },
+    });
+    res.status(401).json({ message: "Refresh token süresi dolmuş. Lütfen tekrar giriş yapın." });
+    return;
+  }
+
+  const user = stored.user;
+  if (user.deletedAt || user.status === "rejected") {
+    res.status(401).json({ message: "Hesap erişimi kaldırılmış." });
+    return;
+  }
+
+  // Revoke the old token (rotation)
+  await prisma.refreshToken.update({
+    where: { id: stored.id },
+    data: { revokedAt: new Date() },
+  });
+
+  // Issue new pair, preserve family for rotation chain tracking
+  const newAccessToken = signToken({
     userId: user.id,
     role: user.role,
     siteId: user.siteId,
     email: user.email,
     sessionVersion: user.sessionVersion,
   });
-  res.json({ user: toUserDto(user), token });
+
+  const newRawToken = generateRefreshToken();
+  await prisma.refreshToken.create({
+    data: {
+      token: newRawToken,
+      userId: user.id,
+      family: stored.family,
+      expiresAt: refreshTokenExpiresAt(),
+    },
+  });
+
+  res.json({
+    accessToken: newAccessToken,
+    token: newAccessToken,
+    refreshToken: newRawToken,
+    user: toUserDto(user),
+  });
+});
+
+// ─── LOGOUT ───────────────────────────────────────────────────────────────────
+// POST /auth/logout — revoke a specific refresh token
+router.post("/auth/logout", async (req: Request, res: Response) => {
+  const { refreshToken } = req.body as { refreshToken?: string };
+  if (refreshToken) {
+    await prisma.refreshToken.updateMany({
+      where: { token: refreshToken, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+  res.json({ message: "Çıkış yapıldı." });
+});
+
+// ─── LOGOUT ALL ───────────────────────────────────────────────────────────────
+// POST /auth/logout-all — invalidate all sessions (bump sessionVersion + revoke all refresh tokens)
+router.post("/auth/logout-all", requireAuth, async (req: Request, res: Response) => {
+  const { userId } = (req as AuthRequest).authUser;
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: { sessionVersion: { increment: 1 } },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  res.json({ message: "Tüm oturumlar sonlandırıldı." });
 });
 
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
@@ -174,11 +315,8 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     });
     await prisma.site.update({ where: { id: site.id }, data: { adminId: user.id } });
 
-    const token = signToken({
-      userId: user.id, role: "admin", siteId: site.id,
-      email: user.email, sessionVersion: user.sessionVersion,
-    });
-    res.json({ success: true, message: "Hesap oluşturuldu.", user: toUserDto(user), token });
+    const { accessToken, refreshToken } = await issueTokenPair(user);
+    res.json({ success: true, message: "Hesap oluşturuldu.", user: toUserDto(user), token: accessToken, accessToken, refreshToken });
     return;
   }
 
@@ -196,11 +334,8 @@ router.post("/auth/register", async (req: Request, res: Response) => {
         plates: data.plates ?? [],
       },
     });
-    const token = signToken({
-      userId: user.id, role: "merchant", siteId: "global",
-      email: user.email, sessionVersion: user.sessionVersion,
-    });
-    res.json({ success: true, message: "Kayıt başarılı.", user: toUserDto(user), token });
+    const { accessToken, refreshToken } = await issueTokenPair(user);
+    res.json({ success: true, message: "Kayıt başarılı.", user: toUserDto(user), token: accessToken, accessToken, refreshToken });
     return;
   }
 
@@ -252,15 +387,14 @@ router.post("/auth/register", async (req: Request, res: Response) => {
     },
   });
 
-  const token = signToken({
-    userId: user.id, role, siteId: site.id,
-    email: user.email, sessionVersion: user.sessionVersion,
-  });
+  const { accessToken, refreshToken } = await issueTokenPair(user);
   res.json({
     success: true,
     message: "Kayıt başarılı. Anında giriş yapabilirsiniz.",
     user: toUserDto(user),
-    token,
+    token: accessToken,
+    accessToken,
+    refreshToken,
   });
 });
 
