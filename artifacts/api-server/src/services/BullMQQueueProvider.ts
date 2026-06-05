@@ -50,13 +50,15 @@ export class BullMQQueueProvider implements QueueProvider {
   }
 
   async enqueue(job: QueueJob): Promise<void> {
-    await this.queue.add(job.type, job, {
+    logger.info({ jobType: job.type, provider: "bullmq" }, "[QUEUE] BullMQ queue.add() çağrılıyor");
+    const added = await this.queue.add(job.type, job, {
       attempts: 3,
       backoff: { type: "exponential", delay: 1000 },
       priority: job.priority ?? 5,
       removeOnComplete: { count: 100 },
       removeOnFail: { count: 200 },
     });
+    logger.info({ jobId: added.id, jobType: job.type }, "[QUEUE] BullMQ job eklendi ✓");
   }
 
   async dequeue(): Promise<QueueJob | null> {
