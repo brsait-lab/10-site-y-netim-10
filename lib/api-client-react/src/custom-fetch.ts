@@ -8,8 +8,21 @@ export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
+export type RefreshTokenHandler = () => Promise<string | null>;
+
+export type ForceLogoutHandler = () => void;
+
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
+
+// ---------------------------------------------------------------------------
+// Auth endpoints that must NOT trigger auto-refresh (prevents infinite loops)
+// ---------------------------------------------------------------------------
+const AUTH_SKIP_REFRESH_PATTERNS = ["/auth/login", "/auth/refresh", "/auth/logout"];
+
+function isAuthEndpoint(url: string): boolean {
+  return AUTH_SKIP_REFRESH_PATTERNS.some((p) => url.includes(p));
+}
 
 // ---------------------------------------------------------------------------
 // Module-level configuration
@@ -17,13 +30,16 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _refreshTokenHandler: RefreshTokenHandler | null = null;
+let _forceLogoutHandler: ForceLogoutHandler | null = null;
+
+// Refresh lock: ensures only ONE refresh call runs even when multiple 401s
+// arrive in parallel.  All concurrent waiters share the same promise.
+let _refreshLock: Promise<string | null> | null = null;
 
 /**
  * Set a base URL that is prepended to every relative request URL
  * (i.e. paths that start with `/`).
- *
- * Useful for Expo bundles that need to call a remote API server.
- * Pass `null` to clear the base URL.
  */
 export function setBaseUrl(url: string | null): void {
   _baseUrl = url ? url.replace(/\/+$/, "") : null;
@@ -33,16 +49,40 @@ export function setBaseUrl(url: string | null): void {
  * Register a getter that supplies a bearer auth token.  Before every fetch
  * the getter is invoked; when it returns a non-null string, an
  * `Authorization: Bearer <token>` header is attached to the request.
- *
- * Useful for Expo bundles making token-gated API calls.
- * Pass `null` to clear the getter.
- *
- * NOTE: This function should never be used in web applications where session
- * token cookies are automatically associated with API calls by the browser.
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
 }
+
+/**
+ * Register a handler called when an access token expires (401).
+ *
+ * The handler must:
+ * 1. Read the stored refresh token
+ * 2. Call POST /auth/refresh
+ * 3. Persist the new access + refresh tokens
+ * 4. Return the new access token string, or null on failure
+ *
+ * When null is returned the request is not retried and `forceLogoutHandler`
+ * is called instead.
+ *
+ * Only a single refresh call runs at a time — parallel 401s share one lock.
+ */
+export function setRefreshTokenHandler(handler: RefreshTokenHandler | null): void {
+  _refreshTokenHandler = handler;
+}
+
+/**
+ * Register a handler called when token refresh fails.
+ * Typically: clear stored credentials and navigate to the login screen.
+ */
+export function setForceLogoutHandler(handler: ForceLogoutHandler | null): void {
+  _forceLogoutHandler = handler;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers (unchanged from original)
+// ---------------------------------------------------------------------------
 
 function isRequest(input: RequestInfo | URL): input is Request {
   return typeof Request !== "undefined" && input instanceof Request;
@@ -54,8 +94,6 @@ function resolveMethod(input: RequestInfo | URL, explicitMethod?: string): strin
   return "GET";
 }
 
-// Use loose check for URL — some runtimes (e.g. React Native) polyfill URL
-// differently, so `instanceof URL` can fail.
 function isUrl(input: RequestInfo | URL): input is URL {
   return typeof URL !== "undefined" && input instanceof URL;
 }
@@ -63,7 +101,6 @@ function isUrl(input: RequestInfo | URL): input is URL {
 function applyBaseUrl(input: RequestInfo | URL): RequestInfo | URL {
   if (!_baseUrl) return input;
   const url = resolveUrl(input);
-  // Only prepend to relative paths (starting with /)
   if (!url.startsWith("/")) return input;
 
   const absolute = `${_baseUrl}${url}`;
@@ -80,14 +117,12 @@ function resolveUrl(input: RequestInfo | URL): string {
 
 function mergeHeaders(...sources: Array<HeadersInit | undefined>): Headers {
   const headers = new Headers();
-
   for (const source of sources) {
     if (!source) continue;
     new Headers(source).forEach((value, key) => {
       headers.set(key, value);
     });
   }
-
   return headers;
 }
 
@@ -111,12 +146,6 @@ function isTextMediaType(mediaType: string | null): boolean {
   );
 }
 
-// Use strict equality: in browsers, `response.body` is `null` when the
-// response genuinely has no content.  In React Native, `response.body` is
-// always `undefined` because the ReadableStream API is not implemented —
-// even when the response carries a full payload readable via `.text()` or
-// `.json()`.  Loose equality (`== null`) matches both `null` and `undefined`,
-// which causes every React Native response to be treated as empty.
 function hasNoBody(response: Response, method: string): boolean {
   if (method === "HEAD") return true;
   if (NO_BODY_STATUS.has(response.status)) return true;
@@ -136,10 +165,8 @@ function looksLikeJson(text: string): boolean {
 
 function getStringField(value: unknown, key: string): string | undefined {
   if (!value || typeof value !== "object") return undefined;
-
   const candidate = (value as Record<string, unknown>)[key];
   if (typeof candidate !== "string") return undefined;
-
   const trimmed = candidate.trim();
   return trimmed === "" ? undefined : trimmed;
 }
@@ -258,7 +285,6 @@ async function parseErrorBody(response: Response, method: string): Promise<unkno
 
   const mediaType = getMediaType(response.headers);
 
-  // Fall back to text when blob() is unavailable (e.g. some React Native builds).
   if (mediaType && !isJsonMediaType(mediaType) && !isTextMediaType(mediaType)) {
     return typeof response.blob === "function" ? response.blob() : response.text();
   }
@@ -322,11 +348,23 @@ async function parseSuccessBody(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Core fetch — public API
+// ---------------------------------------------------------------------------
+
 export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
 ): Promise<T> {
-  input = applyBaseUrl(input);
+  return _fetchWithRefresh<T>(input, options, /* isRetry */ false);
+}
+
+async function _fetchWithRefresh<T>(
+  originalInput: RequestInfo | URL,
+  options: CustomFetchOptions,
+  isRetry: boolean,
+): Promise<T> {
+  const input = applyBaseUrl(originalInput);
   const { responseType = "auto", headers: headersInit, ...init } = options;
 
   const method = resolveMethod(input, init.method);
@@ -349,8 +387,6 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
-  // Attach bearer token when an auth getter is configured and no
-  // Authorization header has been explicitly provided.
   if (_authTokenGetter && !headers.has("authorization")) {
     const token = await _authTokenGetter();
     if (token) {
@@ -363,6 +399,39 @@ export async function customFetch<T = unknown>(
   const response = await fetch(input, { ...init, method, headers });
 
   if (!response.ok) {
+    // ── Auto-refresh interceptor ─────────────────────────────────────────────
+    // Conditions:
+    //   1. Response is 401 Unauthorized
+    //   2. This is the first attempt (not a retry)
+    //   3. A refresh handler is registered
+    //   4. The failed URL is NOT an auth endpoint (prevents infinite loops)
+    if (
+      response.status === 401 &&
+      !isRetry &&
+      _refreshTokenHandler !== null &&
+      !isAuthEndpoint(requestInfo.url)
+    ) {
+      // Acquire the refresh lock.  If another request already started a refresh,
+      // we simply await the same promise instead of firing a second one.
+      if (_refreshLock === null) {
+        _refreshLock = _refreshTokenHandler().finally(() => {
+          _refreshLock = null;
+        });
+      }
+
+      const newToken = await _refreshLock;
+
+      if (newToken) {
+        // Retry the original request — the auth getter now returns the new token
+        return _fetchWithRefresh<T>(originalInput, options, /* isRetry */ true);
+      }
+
+      // Refresh failed → force logout (fire and forget)
+      _forceLogoutHandler?.();
+      // Fall through to throw the 401 error below
+    }
+    // ── End interceptor ──────────────────────────────────────────────────────
+
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);
   }

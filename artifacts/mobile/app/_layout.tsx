@@ -5,7 +5,6 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 import { Stack } from "expo-router";
@@ -18,6 +17,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/context/AuthContext";
 import { DataProvider } from "@/context/DataContext";
+import { getAccessToken } from "@/lib/tokenStore";
 import { SocketProvider } from "@/context/SocketContext";
 
 SplashScreen.preventAutoHideAsync();
@@ -26,7 +26,11 @@ const domain = process.env.EXPO_PUBLIC_DOMAIN;
 if (domain) {
   setBaseUrl(`https://${domain}`);
 }
-setAuthTokenGetter(() => AsyncStorage.getItem("siteapp_token"));
+
+// Use SecureStore-backed token getter (Keychain on iOS, Keystore on Android).
+// The refresh interceptor in customFetch updates SecureStore automatically, so
+// this getter will always return the latest valid access token.
+setAuthTokenGetter(getAccessToken);
 
 const queryClient = new QueryClient();
 

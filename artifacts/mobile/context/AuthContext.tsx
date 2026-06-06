@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   approveUser as apiApproveUser,
   customFetch,
@@ -8,11 +7,23 @@ import {
   login as apiLogin,
   register as apiRegister,
   rejectUser as apiRejectUser,
+  setForceLogoutHandler,
+  setRefreshTokenHandler,
   updateUser as apiUpdateUser,
   type UserDto,
   type SiteDto,
 } from "@workspace/api-client-react";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { router } from "expo-router";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+import * as tokenStore from "@/lib/tokenStore";
 
 export type UserRole = "admin" | "resident" | "security" | "merchant";
 export type UserStatus = "pending" | "active" | "rejected";
@@ -81,13 +92,10 @@ export interface RegisterData {
   password: string;
   role: UserRole;
   phone: string;
-  // Admin only
   siteName?: string;
   siteAddress?: string;
   settlementType?: string;
-  // Resident/Security: join via code
   joinCode?: string;
-  // Residential fields
   unitNo?: string;
   block?: string;
   tower?: string;
@@ -95,7 +103,6 @@ export interface RegisterData {
   floor?: string;
   officeNo?: string;
   plates?: string[];
-  // Merchant fields
   businessName?: string;
   businessCategory?: string;
   businessDescription?: string;
@@ -104,7 +111,6 @@ export interface RegisterData {
   longitude?: number;
 }
 
-const TOKEN_KEY = "siteapp_token";
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -112,6 +118,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sites, setSites] = useState<Site[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Keep a stable ref to setUser so the force-logout handler (registered once)
+  // always calls the latest setter without needing to re-register.
+  const setUserRef = useRef(setUser);
+  setUserRef.current = setUser;
+
+  // ── Wire refresh + force-logout handlers ──────────────────────────────────
+  useEffect(() => {
+    // Refresh handler: called by customFetch on 401.
+    // Reads stored RT → POST /auth/refresh → stores new tokens → returns new AT.
+    setRefreshTokenHandler(async () => {
+      try {
+        const refreshToken = await tokenStore.getRefreshToken();
+        if (!refreshToken) return null;
+
+        const result = await customFetch<{
+          accessToken: string;
+          refreshToken: string;
+        }>("/api/auth/refresh", {
+          method: "POST",
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        await tokenStore.setAccessToken(result.accessToken);
+        await tokenStore.setRefreshToken(result.refreshToken);
+        return result.accessToken;
+      } catch {
+        return null;
+      }
+    });
+
+    // Force-logout handler: called when refresh itself fails (expired / revoked).
+    setForceLogoutHandler(() => {
+      tokenStore.clearTokens().catch(() => {});
+      setUserRef.current(null);
+      router.replace("/(auth)/login" as never);
+    });
+
+    return () => {
+      setRefreshTokenHandler(null);
+      setForceLogoutHandler(null);
+    };
+  }, []);
+
+  // ── App init: restore session from SecureStore ────────────────────────────
   const loadSites = useCallback(async () => {
     try {
       const data = await getSites();
@@ -128,13 +178,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       try {
         await loadSites();
-        const token = await AsyncStorage.getItem(TOKEN_KEY);
+        const token = await tokenStore.getAccessToken();
         if (token) {
           const me = await getMe();
           setUser(me as User);
         }
       } catch {
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        await tokenStore.clearTokens();
       } finally {
         setIsLoading(false);
       }
@@ -142,10 +192,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     init();
   }, [loadSites]);
 
+  // ── Auth actions ──────────────────────────────────────────────────────────
+
   const login = async (email: string, password: string, role: UserRole) => {
     try {
       const result = await apiLogin({ email, password, role });
-      await AsyncStorage.setItem(TOKEN_KEY, result.token);
+      // The server returns { token, accessToken, refreshToken } but the generated
+      // type only knows about `token`.  Cast through unknown to access extras.
+      const loginExtra = result as unknown as { accessToken?: string; refreshToken?: string };
+      await tokenStore.setAccessToken(loginExtra.accessToken ?? result.token);
+      if (loginExtra.refreshToken) {
+        await tokenStore.setRefreshToken(loginExtra.refreshToken);
+      }
       setUser(result.user as User);
       return { success: true, message: "Giriş başarılı." };
     } catch (err: unknown) {
@@ -161,8 +219,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await apiRegister(data as any);
-      if (result.success && result.token && result.user) {
-        await AsyncStorage.setItem(TOKEN_KEY, result.token);
+      if (result.success && result.user) {
+        const regExtra = result as unknown as { accessToken?: string; refreshToken?: string };
+        const accessToken = regExtra.accessToken ?? result.token;
+        const refreshToken = regExtra.refreshToken;
+
+        if (accessToken) await tokenStore.setAccessToken(accessToken);
+        if (refreshToken) await tokenStore.setRefreshToken(refreshToken);
         setUser(result.user as User);
       }
       return { success: result.success, message: result.message };
@@ -176,8 +239,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem(TOKEN_KEY);
-    setUser(null);
+    try {
+      const refreshToken = await tokenStore.getRefreshToken();
+      if (refreshToken) {
+        // Best-effort: tell the server to revoke this refresh token.
+        await customFetch("/api/auth/logout", {
+          method: "POST",
+          body: JSON.stringify({ refreshToken }),
+        }).catch(() => {});
+      }
+    } finally {
+      await tokenStore.clearTokens();
+      setUser(null);
+    }
   };
 
   const updateUser = async (updates: Partial<User>) => {
@@ -211,7 +285,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { return []; }
   };
 
-  // ── NEW: lookup site by join code (public endpoint) ───────────────────────
   const lookupSiteByJoinCode = async (code: string): Promise<SiteLookupResult | null> => {
     try {
       return await customFetch<SiteLookupResult>(
@@ -220,14 +293,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { return null; }
   };
 
-  // ── NEW: full site details including joinCode + bank (admin only) ─────────
   const getSiteDetails = async (siteId: string): Promise<SiteDetail | null> => {
     try {
       return await customFetch<SiteDetail>(`/api/sites/${siteId}`);
     } catch { return null; }
   };
 
-  // ── NEW: update site settings ─────────────────────────────────────────────
   const updateSite = async (
     siteId: string,
     data: Partial<Pick<SiteDetail, "name" | "address" | "settlementType" | "bankName" | "accountHolder" | "iban">>,
@@ -240,7 +311,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { return null; }
   };
 
-  // ── NEW: soft-delete a user (admin only) ──────────────────────────────────
   const softDeleteUser = async (userId: string): Promise<{ success: boolean; message: string }> => {
     try {
       const result = await customFetch<{ success: boolean }>(`/api/users/${userId}`, { method: "DELETE" });
@@ -258,7 +328,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // ── NEW: transfer admin to another user ───────────────────────────────────
   const transferAdmin = async (targetUserId: string): Promise<{ success: boolean; message: string }> => {
     try {
       const result = await customFetch<{ success: boolean; message: string }>(

@@ -6,3 +6,4 @@
 - [Phase C complete](phase-c-complete.md) — C1-C8: cache expansion (4 new endpoints), slow query buffer, backup DR docs, iyzico monetization, subscription_renewal_check job
 - [Phase A scale infra](phase-a-scale.md) — Socket.IO WebSocket, BullMQ/Redis queue, Redis cache layer; BullMQ connection must use options object not IORedis instance (version conflict); Redis started via dev script; Metro blockList for bullmq_tmp dirs
 - [Phase B cache & batch](phase-b-cache-batch.md) — Redis cache on 5 endpoints + explicit invalidation; push_notification_chunk batch splitting (>100 tokens); Prisma $extends slow query logging; GET /subscription/status; GET /expenses/stats
+- [Refresh token & interceptor](refresh-token-interceptor.md) — full RT system: server (rotation, family reuse detection, logout-all), mobile interceptor (lock, retry, force-logout), SecureStore storage
