@@ -127,10 +127,17 @@ let bullmqProvider: import("./services/BullMQQueueProvider.js").BullMQQueueProvi
 
 (async () => {
   try {
+    const { checkRedisAvailable } = await import("./lib/redis.js");
+    const redisReady = await checkRedisAvailable(3000);
+    if (!redisReady) {
+      logger.warn("[QUEUE] Redis erişilemiyor — InMemory queue kullanılıyor (BullMQ devre dışı)");
+      return;
+    }
     const { BullMQQueueProvider } = await import("./services/BullMQQueueProvider.js");
     bullmqProvider = new BullMQQueueProvider();
     queueService.useProvider(bullmqProvider);
     setBullMQProvider(bullmqProvider);
+    logger.info("[QUEUE] BullMQ/Redis provider aktif ✓");
   } catch (err) {
     logger.warn({ err: (err as Error).message }, "[QUEUE] BullMQ başlatılamadı, InMemory kullanılıyor");
   }

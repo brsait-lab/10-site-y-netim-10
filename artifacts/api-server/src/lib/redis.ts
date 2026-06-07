@@ -35,7 +35,7 @@ export function getRedis(): IORedis {
   return _cache;
 }
 
-/** BullMQ için connection options (IORedis instance değil) */
+/** BullMQ için connection options — 10 denemeden sonra bağlantı kesilir */
 export function getBullMQConnectionOptions() {
   const { host, port, password } = parseRedisUrl(REDIS_URL);
   return {
@@ -44,7 +44,35 @@ export function getBullMQConnectionOptions() {
     ...(password ? { password } : {}),
     maxRetriesPerRequest: null as null,
     enableReadyCheck: false,
+    retryStrategy: (times: number) => {
+      if (times > 10) return null;
+      return Math.min(times * 500, 5000);
+    },
   };
+}
+
+/**
+ * Redis'in hazır olup olmadığını kontrol eder.
+ * Sunucu başlamadan önce BullMQ'yu güvenli şekilde başlatmak için kullanılır.
+ */
+export async function checkRedisAvailable(timeoutMs = 3000): Promise<boolean> {
+  const probe = new IORedis({
+    host: "127.0.0.1",
+    port: 6379,
+    connectTimeout: timeoutMs,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null,
+    lazyConnect: true,
+  });
+  try {
+    await probe.connect();
+    await probe.ping();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    probe.disconnect();
+  }
 }
 
 export const redisUrl = REDIS_URL;
