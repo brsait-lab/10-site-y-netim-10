@@ -30,15 +30,23 @@ async function addUserAuditLog(params: {
 // ── GET /users ────────────────────────────────────────────────────────────────
 // GÜVENLİK: querySiteId her zaman token'dan alınır — kullanıcı override edemez.
 router.get("/users", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
-  const { siteId } = (req as AuthRequest).authUser;
+  const { siteId, role } = (req as AuthRequest).authUser;
 
   const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
   const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
   const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
   const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
+  const roleFilter = (req.query["role"] as string) ?? null;
+
+  // Admins can query global merchants (siteId="global") via ?role=merchant
+  const whereClause =
+    roleFilter === "merchant" && role === "admin"
+      ? { role: "merchant" as const, deletedAt: null }
+      : { siteId, deletedAt: null };
+
   const users = await prisma.user.findMany({
-    where: { siteId, deletedAt: null },
+    where: whereClause,
     take: limit,
     skip: offset,
   });

@@ -148,24 +148,33 @@ export default function MerchantsScreen() {
 
   const handleChat = async (merchant: User) => {
     if (!user) return;
-    const chat = await openChat(`${merchant.businessName || merchant.name}`, [user.id, merchant.id]);
-    router.push({ pathname: "/chat/[id]", params: { id: chat.id, name: merchant.businessName || merchant.name } });
+    try {
+      const chat = await openChat(`${merchant.businessName || merchant.name}`, [user.id, merchant.id]);
+      router.push({ pathname: "/chat/[id]", params: { id: chat.id, name: merchant.businessName || merchant.name } });
+    } catch (e) {
+      console.error("Chat açılamadı:", e);
+    }
   };
 
   const handleCall = async (merchant: User) => {
     if (!user || callingMerchant === merchant.id) return;
     setCallingMerchant(merchant.id);
-    await sendNotification({
-      type: "general",
-      title: `Esnaf Çağrısı: ${merchant.businessName || merchant.name}`,
-      message: `${user.name} tarafından ${merchant.businessCategory || "esnaf"} talebi gönderildi.`,
-      fromUserId: user.id,
-      fromName: user.name,
-      siteId: user.siteId,
-      toRoles: ["admin"],
-      toUserIds: [],
-    });
-    setTimeout(() => setCallingMerchant(""), 3000);
+    try {
+      await sendNotification({
+        type: "general",
+        title: `Esnaf Çağrısı: ${merchant.businessName || merchant.name}`,
+        message: `${user.name} tarafından ${merchant.businessCategory || "esnaf"} talebi gönderildi.`,
+        fromUserId: user.id,
+        fromName: user.name,
+        siteId: user.siteId,
+        toRoles: ["admin"],
+        toUserIds: [],
+      });
+    } catch (e) {
+      console.error("Çağrı bildirimi gönderilemedi:", e);
+    } finally {
+      setTimeout(() => setCallingMerchant(""), 3000);
+    }
   };
 
   const filtered = merchants
@@ -264,7 +273,7 @@ export default function MerchantsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 16, gap: 10, paddingBottom: 8, backgroundColor: "white" },
+  header: { paddingHorizontal: 16, gap: 10, paddingBottom: 8 },
   titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   locBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 7 },

@@ -95,18 +95,24 @@ export default function AdminNotificationsScreen() {
   const handleSend = async () => {
     if (!title.trim() || !message.trim() || !user) return;
     setLoading(true);
-    await sendNotification({
-      type: notifType,
-      title: title.trim(),
-      message: message.trim(),
-      fromUserId: user.id,
-      fromName: user.name,
-      siteId: user.siteId,
-      toRoles: target === "all" ? [] : [target],
-      toUserIds: [],
-    });
-    setLoading(false); setSent(true); setTitle(""); setMessage("");
-    setTimeout(() => setSent(false), 3000);
+    try {
+      await sendNotification({
+        type: notifType,
+        title: title.trim(),
+        message: message.trim(),
+        fromUserId: user.id,
+        fromName: user.name,
+        siteId: user.siteId,
+        toRoles: target === "all" ? [] : [target],
+        toUserIds: [],
+      });
+      setSent(true); setTitle(""); setMessage("");
+      setTimeout(() => setSent(false), 3000);
+    } catch (e) {
+      console.error("Bildirim gönderilemedi:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);

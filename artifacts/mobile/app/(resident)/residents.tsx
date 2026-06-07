@@ -95,25 +95,35 @@ export default function ResidentsScreen() {
 
   const handleChat = async (resident: User) => {
     if (!user) return;
-    const chat = await openChat(`${user.name} → ${resident.name}`, [user.id, resident.id]);
-    router.push({ pathname: "/chat/[id]", params: { id: chat.id, name: resident.name } });
+    try {
+      const chat = await openChat(`${user.name} → ${resident.name}`, [user.id, resident.id]);
+      router.push({ pathname: "/chat/[id]", params: { id: chat.id, name: resident.name } });
+    } catch (e) {
+      console.error("Chat açılamadı:", e);
+    }
   };
 
   const handleSendNotif = async () => {
     if (!notifTitle.trim() || !notifMessage.trim() || !notifyTarget || !user) return;
     setSending(true);
-    await sendNotification({
-      type: "general",
-      title: notifTitle.trim(),
-      message: notifMessage.trim(),
-      fromUserId: user.id,
-      fromName: user.name,
-      siteId: user.siteId,
-      toUserIds: [notifyTarget.id],
-      toRoles: [],
-    });
-    setSending(false); setSent(true); setNotifTitle(""); setNotifMessage("");
-    setTimeout(() => { setSent(false); setNotifyTarget(null); }, 2000);
+    try {
+      await sendNotification({
+        type: "general",
+        title: notifTitle.trim(),
+        message: notifMessage.trim(),
+        fromUserId: user.id,
+        fromName: user.name,
+        siteId: user.siteId,
+        toUserIds: [notifyTarget.id],
+        toRoles: [],
+      });
+      setSent(true); setNotifTitle(""); setNotifMessage("");
+      setTimeout(() => { setSent(false); setNotifyTarget(null); }, 2000);
+    } catch (e) {
+      console.error("Bildirim gönderilemedi:", e);
+    } finally {
+      setSending(false);
+    }
   };
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
@@ -201,7 +211,7 @@ export default function ResidentsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 16, gap: 10, paddingBottom: 8, backgroundColor: "white" },
+  header: { paddingHorizontal: 16, gap: 10, paddingBottom: 8 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   countBadge: { paddingHorizontal: 10, paddingVertical: 4 },

@@ -245,7 +245,7 @@ export default function SecurityChatsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 16, gap: 10, paddingBottom: 0, backgroundColor: "white" },
+  header: { paddingHorizontal: 16, gap: 10, paddingBottom: 0 },
   headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   newBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8 },

@@ -127,18 +127,24 @@ export default function ResidentNotificationsScreen() {
     if (!title.trim() || !message.trim() || !user) return;
     if (targetMode === "daire" && !selectedUserId) return;
     setLoading(true);
-    await sendNotification({
-      type: notifType,
-      title: title.trim(),
-      message: message.trim(),
-      fromUserId: user.id,
-      fromName: user.name,
-      siteId: user.siteId,
-      toRoles: targetMode === "daire" ? undefined : [targetMode],
-      toUserIds: targetMode === "daire" ? [selectedUserId] : undefined,
-    });
-    setLoading(false); setSent(true); setTitle(""); setMessage(""); setSelectedUserId("");
-    setTimeout(() => setSent(false), 3000);
+    try {
+      await sendNotification({
+        type: notifType,
+        title: title.trim(),
+        message: message.trim(),
+        fromUserId: user.id,
+        fromName: user.name,
+        siteId: user.siteId,
+        toRoles: targetMode === "daire" ? undefined : [targetMode],
+        toUserIds: targetMode === "daire" ? [selectedUserId] : undefined,
+      });
+      setSent(true); setTitle(""); setMessage(""); setSelectedUserId("");
+      setTimeout(() => setSent(false), 3000);
+    } catch (e) {
+      console.error("Bildirim gönderilemedi:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
@@ -293,7 +299,7 @@ export default function ResidentNotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: 16, gap: 12, paddingBottom: 8, backgroundColor: "white" },
+  header: { paddingHorizontal: 16, gap: 12, paddingBottom: 8 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   title: { fontSize: 22, fontFamily: "Inter_700Bold" },
   badge: { paddingHorizontal: 8, paddingVertical: 3 },

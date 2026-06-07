@@ -242,14 +242,18 @@ export default function SecurityMerchantsScreen() {
 
   const handleChat = async (merchant: User) => {
     if (!user) return;
-    const chat = await openChat(
-      merchant.businessName || merchant.name,
-      [user.id, merchant.id]
-    );
-    router.push({
-      pathname: "/chat/[id]",
-      params: { id: chat.id, name: merchant.businessName || merchant.name },
-    });
+    try {
+      const chat = await openChat(
+        merchant.businessName || merchant.name,
+        [user.id, merchant.id]
+      );
+      router.push({
+        pathname: "/chat/[id]",
+        params: { id: chat.id, name: merchant.businessName || merchant.name },
+      });
+    } catch (e) {
+      console.error("Chat açılamadı:", e);
+    }
   };
 
   const filtered = merchants

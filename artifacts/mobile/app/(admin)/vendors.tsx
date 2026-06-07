@@ -74,7 +74,7 @@ export default function AdminVendorsScreen() {
 
   const loadRequests = useCallback(async () => {
     try {
-      const res = await customFetch("/vendor-requests", { method: "GET" });
+      const res = await customFetch("/api/vendor-requests", { method: "GET" });
       if (res.ok) setRequests(await res.json());
     } catch {}
   }, []);
@@ -98,7 +98,7 @@ export default function AdminVendorsScreen() {
     if (!reqTitle.trim() || !reqDesc.trim()) return;
     setSaving(true);
     try {
-      const res = await customFetch("/vendor-requests", {
+      const res = await customFetch("/api/vendor-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -119,7 +119,7 @@ export default function AdminVendorsScreen() {
 
   const handleUpdateStatus = async (reqId: string, status: string) => {
     try {
-      const res = await customFetch(`/vendor-requests/${reqId}/status`, {
+      const res = await customFetch(`/api/vendor-requests/${reqId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),

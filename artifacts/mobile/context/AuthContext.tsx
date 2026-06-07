@@ -280,8 +280,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const getAllMerchants = async (): Promise<User[]> => {
     try {
-      const all = (await getUsers({ siteId: user?.siteId ?? "" })) as User[];
-      return all.filter((u) => u.role === "merchant");
+      const res = await customFetch<User[]>("/api/users?role=merchant");
+      return Array.isArray(res) ? res : [];
     } catch { return []; }
   };
 

@@ -142,34 +142,42 @@ export default function PackagesScreen() {
     if (!user) return;
     const pkg = packages.find((p) => p.id === pkgId);
     if (!pkg) return;
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await updatePackageStatus(pkgId, "notified");
-    await sendNotification({
-      type: "cargo",
-      title: "📦 Kargunuz Teslimatta Bekliyor",
-      message: `Görevli ${user.name} tarafından kargunuz (${pkg.senderInfo}) güvenlik görevlisine teslim edildi. Lütfen en kısa sürede teslim alınız.`,
-      fromUserId: user.id,
-      fromName: user.name,
-      siteId: user.siteId,
-      toUserIds: [pkg.recipientUserId],
-    });
+    try {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await updatePackageStatus(pkgId, "notified");
+      await sendNotification({
+        type: "cargo",
+        title: "📦 Kargunuz Teslimatta Bekliyor",
+        message: `Görevli ${user.name} tarafından kargunuz (${pkg.senderInfo}) güvenlik görevlisine teslim edildi. Lütfen en kısa sürede teslim alınız.`,
+        fromUserId: user.id,
+        fromName: user.name,
+        siteId: user.siteId,
+        toUserIds: [pkg.recipientUserId],
+      });
+    } catch (e) {
+      console.error("Bildirim gönderilemedi:", e);
+    }
   };
 
   const handleDeliver = async (pkgId: string) => {
     if (!user) return;
     const pkg = packages.find((p) => p.id === pkgId);
     if (!pkg) return;
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await updatePackageStatus(pkgId, "delivered");
-    await sendNotification({
-      type: "cargo",
-      title: "✅ Kargo Teslim Alındı",
-      message: `${pkg.senderInfo} tarafından gelen kargunuz ${user.name} tarafından size teslim edildi. İyi günler!`,
-      fromUserId: user.id,
-      fromName: user.name,
-      siteId: user.siteId,
-      toUserIds: [pkg.recipientUserId],
-    });
+    try {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await updatePackageStatus(pkgId, "delivered");
+      await sendNotification({
+        type: "cargo",
+        title: "✅ Kargo Teslim Alındı",
+        message: `${pkg.senderInfo} tarafından gelen kargunuz ${user.name} tarafından size teslim edildi. İyi günler!`,
+        fromUserId: user.id,
+        fromName: user.name,
+        siteId: user.siteId,
+        toUserIds: [pkg.recipientUserId],
+      });
+    } catch (e) {
+      console.error("Teslim bildirimi gönderilemedi:", e);
+    }
   };
 
   const handleAddPackage = async () => {
@@ -177,27 +185,32 @@ export default function PackagesScreen() {
     const resident = residents.find((r) => r.id === recipientId);
     if (!resident) return;
     setLoading(true);
-    await addPackage({
-      siteId: user.siteId,
-      recipientUserId: recipientId,
-      recipientName: resident.name + (resident.unitNo ? ` (Daire ${resident.unitNo})` : ""),
-      senderInfo: senderInfo.trim(),
-      description: description.trim(),
-      status: "received",
-    });
-    await sendNotification({
-      type: "cargo",
-      title: "📦 Yeni Kargo Geldi",
-      message: `${senderInfo.trim()} firmasından kargunuz güvenlik noktasına teslim edildi. Uygun olduğunuzda teslim alabilirsiniz.`,
-      fromUserId: user.id,
-      fromName: user.name,
-      siteId: user.siteId,
-      toUserIds: [recipientId],
-    });
-    setLoading(false);
-    setSuccess(true);
-    setRecipientId(""); setSenderInfo(""); setDescription("");
-    setTimeout(() => { setSuccess(false); setActiveTab("list"); }, 2200);
+    try {
+      await addPackage({
+        siteId: user.siteId,
+        recipientUserId: recipientId,
+        recipientName: resident.name + (resident.unitNo ? ` (Daire ${resident.unitNo})` : ""),
+        senderInfo: senderInfo.trim(),
+        description: description.trim(),
+        status: "received",
+      });
+      await sendNotification({
+        type: "cargo",
+        title: "📦 Yeni Kargo Geldi",
+        message: `${senderInfo.trim()} firmasından kargunuz güvenlik noktasına teslim edildi. Uygun olduğunuzda teslim alabilirsiniz.`,
+        fromUserId: user.id,
+        fromName: user.name,
+        siteId: user.siteId,
+        toUserIds: [recipientId],
+      });
+      setSuccess(true);
+      setRecipientId(""); setSenderInfo(""); setDescription("");
+      setTimeout(() => { setSuccess(false); setActiveTab("list"); }, 2200);
+    } catch (e) {
+      console.error("Kargo eklenemedi:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
