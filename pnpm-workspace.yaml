@@ -37,9 +37,13 @@ minimumReleaseAgeExclude:
   - stripe-replit-sync
 
 onlyBuiltDependencies:
+  - '@prisma/engines'
   - '@swc/core'
+  - bcrypt
   - esbuild
+  - msgpackr-extract
   - msw
+  - prisma
   - unrs-resolver
 
 overrides:
