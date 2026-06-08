@@ -109,15 +109,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     setLoading(true);
     setLoadError(null);
+    const isMerchant = user.role === "merchant";
     try {
       const [n, p, up, m, pk, ch, ex, ds] = await Promise.all([
-        getNotifications(),
-        getPayments(),
-        getUserPayments(),
+        isMerchant ? Promise.resolve([]) : getNotifications(),
+        isMerchant ? Promise.resolve([]) : getPayments(),
+        isMerchant ? Promise.resolve([]) : getUserPayments(),
         getMessages({}),
-        getPackages(),
+        isMerchant ? Promise.resolve([]) : getPackages(),
         getChats(),
-        user.role !== "security" ? apiGetExpenses() : Promise.resolve([]),
+        (!isMerchant && user.role !== "security") ? apiGetExpenses() : Promise.resolve([]),
         user.role === "admin" ? apiGetDashboardStats() : Promise.resolve(null),
       ]);
       setNotifications(n as AppNotification[]);

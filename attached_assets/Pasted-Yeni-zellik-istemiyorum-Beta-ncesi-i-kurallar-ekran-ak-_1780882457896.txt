@@ -1,0 +1,155 @@
+Yeni özellik istemiyorum. Beta öncesi iş kuralları, ekran akışları ve mevcut hataların düzeltilmesini istiyorum.
+
+Öncelik sırasıyla aşağıdaki maddeleri analiz et, düzelt ve her biri için kanıtlı rapor ver.
+
+1. Bildirim Sistemi Yetkilendirmesi
+
+Beklenen davranış:
+
+Resident (Sakin):
+
+* Yöneticiye bildirim gönderebilir
+* Güvenliğe/görevliye bildirim gönderebilir
+* Belirli bir sakine bildirim gönderebilir
+* Site geneline bildirim gönderemez
+* Toplu duyuru gönderemez
+
+Security:
+
+* Yöneticiye bildirim gönderebilir
+* Belirli kullanıcılara bildirim gönderebilir
+* Site geneline bildirim gönderemez
+
+Admin:
+
+* Site geneline duyuru gönderebilir
+* Belirli bloklara duyuru gönderebilir
+* Belirli kullanıcılara bildirim gönderebilir
+
+Kontroller:
+
+* UI tarafında rol bazlı seçenekler gösterilsin
+* Backend tarafında da zorunlu yetki kontrolü olsun
+* API bypass edilerek resident rolüyle broadcast gönderilemesin
+
+2. Yönetici Ayarlar / Güvenlik Yapılandırması
+
+Yönetici:
+
+* Güvenlik ayarlarını yönetebilmeli
+* Yetki ayarlarını değiştirebilmeli
+* Bildirim davranışlarını yönetebilmeli
+
+Mevcut ekranları kontrol et.
+Eksik veya çalışmayan ayarlar varsa düzelt.
+
+3. Bildirim Gönderme Ekranı
+
+Sakin veya görevli bildirim gönderirken:
+
+* Alıcı seçimi zorunlu olsun
+* Daire seçilebilsin
+* Kullanıcı seçilebilsin
+* Yönetici seçilebilsin
+* Güvenlik seçilebilsin
+
+Alıcı seçmeden gönderim yapılamasın.
+
+4. Aidat Şablonları ve Tarih Düzeni
+
+Yönetici aidat şablonu oluştururken:
+
+* Başlangıç tarihi
+* Son ödeme tarihi
+* Oluşturulma tarihi
+* Dönem tarihi
+
+birbirine karışmamalı.
+
+Beklenen:
+
+* Tarihler tutarlı formatta gösterilsin
+* Liste ekranlarında sıralama doğru olsun
+* DD.MM.YYYY veya seçilen standart her yerde aynı kullanılsın
+* Aidat dönemleri okunabilir görünsün
+
+5. Sakin Ana Panel Borç Durumu
+
+Kritik hata kontrolü:
+
+Borç bulunduğunda:
+
+* Ana panelde "Borç Yok" görünmemeli
+
+Beklenen:
+
+* Toplam borç
+* Gecikmiş borç
+* Son ödeme tarihi
+
+gerçek API verisiyle gösterilsin.
+
+Cache veya state kaynaklı yanlış görünüm varsa düzelt.
+
+6. Sakin Sohbet Butonu
+
+Sakin panelindeki sohbet butonu çalışmıyor.
+
+Kontrol et:
+
+* Route doğru mu
+* Navigation doğru mu
+* Chat ekranı açılıyor mu
+* WebSocket bağlantısı kuruluyor mu
+
+Sorunu tespit edip düzelt.
+
+7. Kart → Sekme Eşleşmesi
+
+Dashboard kartları ilgili sekmeye açılmalı.
+
+Beklenen:
+
+Kargo kartı:
+→ Kargo sekmesi
+
+Duyuru kartı:
+→ Duyuru sekmesi
+
+Bildirim kartı:
+→ Bildirim sekmesi
+
+Sohbet kartı:
+→ Sohbet sekmesi
+
+Ödeme kartı:
+→ Aidat/Ödeme sekmesi
+
+Yanlış sekmeye yönlendirme varsa düzelt.
+
+8. Esnaf Paneli
+
+Esnaf paneli hiç açılmıyor.
+
+Kontrol et:
+
+* Route
+* Navigation
+* Yetki kontrolü
+* API çağrıları
+* Render hataları
+
+Sorunu tespit edip düzelt.
+
+İstenen çıktı:
+
+Her madde için:
+
+* Sorun bulundu mu?
+* Kök neden ne?
+* Nasıl düzeltildi?
+* Hangi dosyalar değişti?
+* Test sonucu ne?
+
+Yeni özellik ekleme.
+Sadece mevcut iş kurallarını ve ekran akışlarını beta çıkışına hazır hale getir.

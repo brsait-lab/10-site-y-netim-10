@@ -221,7 +221,7 @@ export default function AdminPayments() {
               </View>
             )}
             <View style={{ flex: 1 }} />
-            <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>{payment.dueDate}</Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>Son Ödeme: {payment.dueDate}</Text>
             <Feather name={expanded ? "chevron-up" : "chevron-down"} size={15} color={colors.mutedForeground} />
           </View>
           <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.text, marginBottom: 6 }}>{payment.title}</Text>

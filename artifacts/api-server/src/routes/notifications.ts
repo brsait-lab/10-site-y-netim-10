@@ -42,7 +42,7 @@ function toDto(
 }
 
 // C1 — GET /notifications/unread-count (30s cache, user-level key)
-router.get("/notifications/unread-count", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
+router.get("/notifications/unread-count", requireAuth, async (req: Request, res: Response) => {
   const { siteId, userId } = (req as AuthRequest).authUser;
   const key = `cache:notif:unread:${siteId}:${userId}`;
 
@@ -69,7 +69,7 @@ router.get("/notifications/unread-count", requireAuth, blockRoles("merchant"), a
   res.json(result);
 });
 
-router.get("/notifications", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
+router.get("/notifications", requireAuth, async (req: Request, res: Response) => {
   const { siteId } = (req as AuthRequest).authUser;
 
   const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
@@ -157,16 +157,37 @@ router.post(
           return;
         }
       }
+
+      if (body.type === "general") {
+        const toRoles = body.toRoles ?? [];
+        const toUserIds = body.toUserIds ?? [];
+        const allowedRoles = ["admin", "security"];
+        if (toRoles.length === 0 && toUserIds.length === 0) {
+          res.status(403).json({ message: "Alıcı belirtilmesi zorunludur." });
+          return;
+        }
+        if (toRoles.some((r) => !allowedRoles.includes(r))) {
+          res.status(403).json({ message: "Sakin yalnızca yönetici, güvenlik veya belirli bir kişiye bildirim gönderebilir." });
+          return;
+        }
+      }
     }
 
     if (role === "security") {
-      const isOperational = (SECURITY_OPERATIONAL_TYPES as readonly string[]).includes(body.type);
+      const SECURITY_ALLOWED_TYPES = [...(SECURITY_OPERATIONAL_TYPES as string[]), "general", "security"];
       const toRoles = body.toRoles ?? [];
-      if (!isOperational || toRoles.includes("merchant")) {
-        if (toRoles.includes("merchant")) {
-          res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
-          return;
-        }
+      const toUserIds = body.toUserIds ?? [];
+      if (!SECURITY_ALLOWED_TYPES.includes(body.type)) {
+        res.status(403).json({ message: "Güvenlik görevlisi bu türde bildirim gönderemez." });
+        return;
+      }
+      if (toRoles.includes("merchant")) {
+        res.status(403).json({ message: "Güvenlik görevlisi esnafa bildirim gönderemez." });
+        return;
+      }
+      if (toRoles.length === 0 && toUserIds.length === 0) {
+        res.status(403).json({ message: "Site geneline bildirim gönderilemez. Lütfen alıcı belirtin." });
+        return;
       }
     }
 
@@ -201,7 +222,7 @@ router.post(
   },
 );
 
-router.patch("/notifications/:id/read", requireAuth, blockRoles("merchant"), async (req: Request, res: Response) => {
+router.patch("/notifications/:id/read", requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params as { id: string };
   const { userId, siteId } = (req as AuthRequest).authUser;
 
