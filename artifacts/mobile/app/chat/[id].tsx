@@ -79,11 +79,13 @@ export default function ChatScreen() {
     );
   }, [baseMessages, localMessages]);
 
-  // Join/leave chat room via WebSocket
+  // Join/leave chat room via WebSocket.
+  // Also re-join when `connected` flips true (reconnect after background/foreground).
   useEffect(() => {
+    if (!connected) return;
     joinChat(chatId);
     return () => leaveChat(chatId);
-  }, [chatId, joinChat, leaveChat]);
+  }, [chatId, joinChat, leaveChat, connected]);
 
   // Listen for incoming WebSocket messages
   const handleNewMessage = useCallback(
@@ -99,10 +101,12 @@ export default function ChatScreen() {
     [chatId],
   );
 
+  // Re-register listener whenever socket connects or reconnects
   useEffect(() => {
+    if (!connected) return;
     const off = onNewMessage(handleNewMessage);
     return off;
-  }, [onNewMessage, handleNewMessage]);
+  }, [onNewMessage, handleNewMessage, connected]);
 
   // Scroll to bottom on load
   useEffect(() => {
