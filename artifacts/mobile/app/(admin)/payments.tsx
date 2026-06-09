@@ -48,6 +48,25 @@ function typeMeta(type: string) {
   }
 }
 
+const TR_MONTHS = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+
+function formatPeriod(period: string | undefined | null): string {
+  if (!period) return "";
+  const parts = period.split("-");
+  if (parts.length < 2) return period;
+  const year = parts[0];
+  const month = parseInt(parts[1], 10);
+  if (isNaN(month) || month < 1 || month > 12) return period;
+  return `${TR_MONTHS[month - 1]} ${year}`;
+}
+
+function formatCreatedAt(iso: string | undefined | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" });
+  } catch { return ""; }
+}
+
 function catLabel(cat: string) {
   return EXPENSE_CATEGORIES.find((c) => c.key === cat)?.label ?? cat;
 }
@@ -215,13 +234,16 @@ export default function AdminPayments() {
             <View style={{ backgroundColor: meta.color + "18", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
               <Text style={{ color: meta.color, fontSize: 11, fontFamily: "Inter_600SemiBold" }}>{meta.label}</Text>
             </View>
+            {(payment as any).period && (
+              <View style={{ backgroundColor: "#6366f115", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                <Text style={{ color: "#6366f1", fontSize: 11, fontFamily: "Inter_600SemiBold" }}>{formatPeriod((payment as any).period)}</Text>
+              </View>
+            )}
             {approvalC > 0 && (
               <View style={{ backgroundColor: "#1d4ed8", borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1 }}>
                 <Text style={{ color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold" }}>{approvalC} dekont</Text>
               </View>
             )}
-            <View style={{ flex: 1 }} />
-            <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>Son Ödeme: {payment.dueDate}</Text>
             <Feather name={expanded ? "chevron-up" : "chevron-down"} size={15} color={colors.mutedForeground} />
           </View>
           <Text style={{ fontSize: 15, fontFamily: "Inter_600SemiBold", color: colors.text, marginBottom: 6 }}>{payment.title}</Text>
@@ -230,6 +252,18 @@ export default function AdminPayments() {
             {rows.length > 0 && (
               <Text style={{ color: colors.mutedForeground, fontSize: 12, fontFamily: "Inter_500Medium" }}>
                 {paidC}/{rows.length} {unitLabel} ödedi
+              </Text>
+            )}
+          </View>
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 6 }}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+              <Text style={{ fontFamily: "Inter_500Medium" }}>Son Ödeme: </Text>
+              <Text style={{ fontFamily: "Inter_400Regular" }}>{payment.dueDate}</Text>
+            </Text>
+            {(payment as any).createdAt && (
+              <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                <Text style={{ fontFamily: "Inter_500Medium" }}>Oluşturulma: </Text>
+                <Text style={{ fontFamily: "Inter_400Regular" }}>{formatCreatedAt((payment as any).createdAt)}</Text>
               </Text>
             )}
           </View>

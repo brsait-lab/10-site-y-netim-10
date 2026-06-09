@@ -104,8 +104,10 @@ export default function ResidentHome() {
 
   const onRefresh = async () => { setRefreshing(true); await refresh(); setRefreshing(false); };
 
-  // All pending user payments for this resident
-  const myUPs = userPayments.filter((up) => up.userId === user?.id && up.status === "pending");
+  // All pending user payments for this resident (pending = unpaid, pending_approval = awaiting admin review)
+  const myUPs = userPayments.filter(
+    (up) => up.userId === user?.id && (up.status === "pending" || up.status === "pending_approval"),
+  );
 
   const pendingPaymentTotal = myUPs.reduce((sum, up) => {
     const p = payments.find((p) => p.id === up.paymentId);
@@ -136,6 +138,7 @@ export default function ResidentHome() {
   const openChats = chats.filter((c) => c.status === "open").length;
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
+  const pendingApprovalUPs = myUPs.filter((up) => up.status === "pending_approval");
   const aidatHighlight = pendingPaymentTotal > 0;
   const hasOverdue = overdueUPs.length > 0;
 
@@ -231,6 +234,8 @@ export default function ResidentHome() {
           sub={
             hasOverdue
               ? `${overdueUPs.length} gecikmiş`
+              : pendingApprovalUPs.length > 0
+              ? `${pendingApprovalUPs.length} onay bekliyor`
               : pendingPaymentTotal > 0
               ? "bekleyen borç"
               : "Borç yok"

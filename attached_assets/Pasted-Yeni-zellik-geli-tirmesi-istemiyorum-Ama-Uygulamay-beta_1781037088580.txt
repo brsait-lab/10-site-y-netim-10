@@ -1,0 +1,204 @@
+Yeni özellik geliştirmesi istemiyorum.
+
+Amaç: Uygulamayı beta dağıtıma hazır hale getirmek.
+
+Lütfen aşağıdaki maddeleri analiz et, düzelt, test et ve her madde için kanıtlı rapor ver.
+
+════════════════════════════════════
+
+1. Bildirim Sistemi Yetkilendirmesi
+   ════════════════════════════════════
+
+Beklenen davranış:
+
+Resident (Sakin):
+
+* Yöneticiye bildirim gönderebilir
+* Güvenliğe/görevliye bildirim gönderebilir
+* Belirli bir sakine bildirim gönderebilir
+* Site geneline bildirim gönderemez
+* Toplu duyuru gönderemez
+
+Security:
+
+* Yöneticiye bildirim gönderebilir
+* Belirli kullanıcılara bildirim gönderebilir
+* Site geneline bildirim gönderemez
+
+Admin:
+
+* Site geneline duyuru gönderebilir
+* Belirli bloklara duyuru gönderebilir
+* Belirli kullanıcılara bildirim gönderebilir
+
+Kontroller:
+
+* UI tarafında rol bazlı seçenekler gösterilsin
+* Backend tarafında zorunlu yetki kontrolü olsun
+* API bypass edilerek resident rolüyle broadcast gönderilemesin
+* Yetki matrisi raporlansın
+
+════════════════════════════════════
+2) Yönetici Ayarlar / Güvenlik Bölümü
+════════════════════════════════════
+
+Yönetici:
+
+* Güvenlik ayarlarını yönetebilmeli
+* Yetki ayarlarını yönetebilmeli
+* Bildirim ayarlarını yönetebilmeli
+* Sistem davranışlarını yönetebilmeli
+
+Kontrol et:
+
+* Hangi ayarlar çalışıyor
+* Hangi ayarlar eksik
+* Hangi ayarlar sadece UI'da var ama backend'e bağlı değil
+
+Raporla ve düzelt.
+
+════════════════════════════════════
+3) Bildirim Gönderme Ekranı
+════════════════════════════════════
+
+Sakin veya görevli bildirim gönderirken:
+
+* Daire seçebilmeli
+* Kullanıcı seçebilmeli
+* Yönetici seçebilmeli
+* Güvenlik seçebilmeli
+
+Alıcı seçimi zorunlu olsun.
+
+Alıcı seçilmeden gönderim yapılamasın.
+
+════════════════════════════════════
+4) Aidat Şablonları ve Tarih Düzeni
+════════════════════════════════════
+
+Yönetici aidat oluştururken:
+
+* Oluşturulma tarihi
+* Aidat dönemi
+* Son ödeme tarihi
+* Başlangıç tarihi
+
+karışmamalı.
+
+Kontrol et:
+
+* Tarih formatları
+* Liste sıralamaları
+* Aidat dönemleri
+* Görsel okunabilirlik
+
+Beklenen:
+
+* Tüm tarih gösterimleri tutarlı olsun
+* Tarihler kullanıcıyı yanıltmasın
+* Dönem bazlı aidatlar düzenli görünsün
+
+════════════════════════════════════
+5) Sakin Borç Durumu
+════════════════════════════════════
+
+Kritik kontrol:
+
+Borç varsa:
+
+* Ana panelde "Borç Yok" görünmemeli
+
+Beklenen:
+
+* Toplam borç
+* Gecikmiş borç
+* Son ödeme tarihi
+
+gerçek API verisiyle gösterilsin.
+
+Cache veya state kaynaklı yanlış görünüm varsa düzelt.
+
+════════════════════════════════════
+6) Sakin Sohbet Sistemi
+════════════════════════════════════
+
+Sakin panelindeki sohbet butonu çalışmıyor.
+
+Kontrol et:
+
+* Route
+* Navigation
+* Chat ekranı
+* Socket bağlantısı
+* WebSocket eventleri
+
+Sorunu bul ve düzelt.
+
+════════════════════════════════════
+7) Dashboard Kartları ve Sekmeler
+════════════════════════════════════
+
+Kritik UX kontrolü.
+
+Şu an bazı kartlar aynı sekmeye açılıyor.
+
+Bu davranış doğru değil.
+
+Her kart yalnızca kendi modülünü açmalı.
+
+Beklenen:
+
+* Kargo kartı → Kargo ekranı
+* Duyuru kartı → Duyuru ekranı
+* Bildirim kartı → Bildirim ekranı
+* Sohbet kartı → Sohbet ekranı
+* Aidat/Borç kartı → Ödemeler ekranı
+* Gider kartı → Gider ekranı
+* Paket kartı → Paket ekranı
+* Ziyaretçi kartı → Ziyaretçi ekranı
+* Talep kartı → Talep ekranı
+* Esnaf kartı → Esnaf ekranı
+
+Kontrol et:
+
+* Tüm dashboard kartları
+* Tüm navigation route'ları
+* Yanlış yönlendirmeler
+* Aynı sekmeye giden kartlar
+
+Her kartın hangi route'a gittiğini raporla.
+
+════════════════════════════════════
+8) Esnaf Paneli
+════════════════════════════════════
+
+Esnaf paneli açılmıyor.
+
+Kontrol et:
+
+* Route
+* Navigation
+* Yetki kontrolü
+* API çağrıları
+* Render hataları
+* Boş state ve loading state
+
+Sorunu tespit et ve düzelt.
+
+════════════════════════════════════
+İSTENEN ÇIKTI
+════════════════════════════════════
+
+Her madde için:
+
+* Sorun bulundu mu?
+* Kök neden ne?
+* Hangi dosyalar değişti?
+* Nasıl düzeltildi?
+* Hangi testler yapıldı?
+* Sonuç başarılı mı?
+
+Yeni özellik ekleme.
+
+Odak noktası:
+Beta sürümüne çıkmadan önce iş kuralları, ekran akışları, navigation ve kullanıcı deneyimi hatalarını tamamen temizlemek.

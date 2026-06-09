@@ -101,8 +101,18 @@ export default function ResidentNotificationsScreen() {
     if (paramsApplied.current) return;
     paramsApplied.current = true;
     if (params.action === "cargo") { setTab("send"); setNotifType("cargo"); setTargetMode("security"); }
-    else if (params.action === "noise") { setTab("send"); setNotifType("noise"); setTargetMode("admin"); }
+    else if (params.action === "noise") { setTab("send"); setNotifType("noise"); setTargetMode("daire"); }
   }, [params.action]);
+
+  // Enforce target mode based on notification type
+  useEffect(() => {
+    if (notifType === "cargo") {
+      setTargetMode("security");
+      setSelectedUserId("");
+    } else if (notifType === "noise") {
+      setTargetMode("daire");
+    }
+  }, [notifType]);
 
   const loadResidents = useCallback(async () => {
     if (!user) return;
@@ -211,13 +221,25 @@ export default function ResidentNotificationsScreen() {
 
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>KİME GÖNDERİLSİN?</Text>
           <View style={styles.targetRow}>
-            {([["admin", "Yönetici", "settings"], ["security", "Güvenlik", "shield"], ["daire", "Belirli Daire", "home"]] as [TargetMode, string, string][]).map(([k, l, i]) => (
-              <Pressable key={k} onPress={() => { setTargetMode(k); setSelectedUserId(""); }}
-                style={[styles.targetBtn, { borderRadius: 10, borderColor: targetMode === k ? colors.primary : colors.border, backgroundColor: targetMode === k ? colors.primaryLight : colors.card }]}>
-                <Feather name={i as any} size={16} color={targetMode === k ? colors.primary : colors.mutedForeground} />
-                <Text style={[styles.targetLabel, { color: targetMode === k ? colors.primary : colors.foreground }]}>{l}</Text>
-              </Pressable>
-            ))}
+            {([["admin", "Yönetici", "settings"], ["security", "Güvenlik", "shield"], ["daire", "Belirli Daire", "home"]] as [TargetMode, string, string][]).map(([k, l, i]) => {
+              const isLocked =
+                (notifType === "cargo" && k !== "security") ||
+                (notifType === "noise" && k !== "daire");
+              const isActive = targetMode === k;
+              return (
+                <Pressable key={k}
+                  onPress={() => { if (!isLocked) { setTargetMode(k); setSelectedUserId(""); } }}
+                  style={[styles.targetBtn, {
+                    borderRadius: 10,
+                    borderColor: isActive ? colors.primary : colors.border,
+                    backgroundColor: isActive ? colors.primaryLight : isLocked ? colors.muted : colors.card,
+                    opacity: isLocked ? 0.45 : 1,
+                  }]}>
+                  <Feather name={i as any} size={16} color={isActive ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.targetLabel, { color: isActive ? colors.primary : colors.foreground }]}>{l}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           {targetMode === "daire" && (

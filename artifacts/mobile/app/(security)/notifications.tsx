@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import { useAuth, User } from "@/context/AuthContext";
 import { useData, AppNotification, NotificationType } from "@/context/DataContext";
 import { useColors } from "@/hooks/useColors";
@@ -90,7 +91,8 @@ export default function SecurityNotificationsScreen() {
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
-  const [tab, setTab] = useState<TabMode>("inbox");
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<TabMode>(params.tab === "send" ? "send" : "inbox");
 
   const [sendTarget, setSendTarget] = useState<SendTarget>("admin");
   const [notifType, setNotifType] = useState<NotificationType>("general");

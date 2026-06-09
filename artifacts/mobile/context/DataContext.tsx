@@ -115,7 +115,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         isMerchant ? Promise.resolve([]) : getNotifications(),
         isMerchant ? Promise.resolve([]) : getPayments(),
         isMerchant ? Promise.resolve([]) : getUserPayments(),
-        getMessages({}),
+        isMerchant ? Promise.resolve([]) : getMessages({}),
         isMerchant ? Promise.resolve([]) : getPackages(),
         getChats(),
         (!isMerchant && user.role !== "security") ? apiGetExpenses() : Promise.resolve([]),

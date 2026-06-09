@@ -123,22 +123,30 @@ router.post(
       }
 
       if (body.type === "noise") {
-        const targetUserId = body.toUserIds?.[0];
-        if (targetUserId) {
-          const dayStart = new Date();
-          dayStart.setHours(0, 0, 0, 0);
-          const count = await prisma.notification.count({
-            where: {
-              fromUserId: userId,
-              type: "noise",
-              toUserIds: { has: targetUserId },
-              createdAt: { gte: dayStart },
-            },
-          });
-          if (count >= 1) {
-            res.status(429).json({ message: "Aynı kişiye bugün zaten gürültü bildirimi gönderdiniz." });
-            return;
-          }
+        const toUserIds = body.toUserIds ?? [];
+        const toRoles = body.toRoles ?? [];
+        if (toUserIds.length === 0) {
+          res.status(403).json({ message: "Gürültü bildirimi yalnızca belirli bir kişiye gönderilebilir. Lütfen daire seçin." });
+          return;
+        }
+        if (toRoles.length > 0) {
+          res.status(403).json({ message: "Gürültü bildirimi rol bazlı veya toplu gönderilemez." });
+          return;
+        }
+        const targetUserId = toUserIds[0];
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const count = await prisma.notification.count({
+          where: {
+            fromUserId: userId,
+            type: "noise",
+            toUserIds: { has: targetUserId },
+            createdAt: { gte: dayStart },
+          },
+        });
+        if (count >= 1) {
+          res.status(429).json({ message: "Aynı kişiye bugün zaten gürültü bildirimi gönderdiniz." });
+          return;
         }
       }
 

@@ -151,7 +151,7 @@ export default function SecurityDashboard() {
           icon="volume-2"
           label="Site Duyuruları"
           sub="Sakinlere bildir"
-          onPress={() => router.push("/(security)/notifications")}
+          onPress={() => router.push({ pathname: "/(security)/notifications", params: { tab: "send" } })}
           accent="#3b82f6"
         />
         <ActionCard
