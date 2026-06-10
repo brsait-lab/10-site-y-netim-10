@@ -55,7 +55,7 @@ function NotifCard({ n, userId }: { n: AppNotification; userId: string }) {
         </Text>
       </View>
       <Text style={[styles.cardTitle, { color: colors.foreground }]}>{n.title}</Text>
-      {n.fromName && (
+      {n.fromName && n.type !== "noise" && (
         <View style={styles.senderRow}>
           <Feather name="user" size={11} color={colors.mutedForeground} />
           <Text style={[styles.senderText, { color: colors.mutedForeground }]}>{n.fromName}</Text>

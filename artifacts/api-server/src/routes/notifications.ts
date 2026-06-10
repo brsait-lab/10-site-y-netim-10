@@ -31,9 +31,11 @@ function toDto(
   readByIds: string[] = [],
 ) {
   if (!n) return null;
+  const isNoise = n.type === "noise";
   return {
     id: n.id, type: n.type, title: n.title, message: n.message,
-    fromUserId: n.fromUserId, fromName: n.fromName,
+    fromUserId: isNoise ? null : n.fromUserId,
+    fromName: isNoise ? null : n.fromName,
     toRoles: n.toRoles ?? undefined, toUserIds: n.toUserIds ?? undefined,
     siteId: n.siteId,
     readBy: readByIds,
@@ -191,7 +193,7 @@ router.post(
     }
 
     if (role === "security") {
-      const SECURITY_ALLOWED_TYPES = [...(SECURITY_OPERATIONAL_TYPES as string[]), "general", "security"];
+      const SECURITY_ALLOWED_TYPES = [...SECURITY_OPERATIONAL_TYPES, "general", "security"] as string[];
       const toRoles = body.toRoles ?? [];
       const toUserIds = body.toUserIds ?? [];
       if (!SECURITY_ALLOWED_TYPES.includes(body.type)) {

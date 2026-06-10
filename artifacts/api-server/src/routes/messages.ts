@@ -48,7 +48,7 @@ router.get("/messages", requireAuth, async (req: Request, res: Response) => {
       take: limit,
       skip: offset,
     });
-    return res.json(rows.map(toMessageDto));
+    res.json(rows.map(toMessageDto)); return;
   }
 
   const participations = await prisma.chatParticipant.findMany({
@@ -58,7 +58,7 @@ router.get("/messages", requireAuth, async (req: Request, res: Response) => {
   const chatIds = participations.map((p) => p.chatId);
 
   if (chatIds.length === 0) {
-    return res.json([]);
+    res.json([]); return;
   }
 
   const rows = await prisma.message.findMany({

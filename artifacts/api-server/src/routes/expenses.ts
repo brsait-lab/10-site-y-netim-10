@@ -28,13 +28,13 @@ function extractPeriod(date: string): { year: number | null; month: number | nul
 
 function toExpenseDto(e: {
   id: string; siteId: string; title: string; description: string;
-  amount: number; date: string; category: string; documentUrl: string | null;
+  amount: number | { toNumber(): number }; date: string; category: string; documentUrl: string | null;
   year: number | null; month: number | null; period: string | null;
   createdBy: string; cancelledAt: Date | null; createdAt: Date;
 }) {
   return {
     id: e.id, siteId: e.siteId, title: e.title, description: e.description,
-    amount: e.amount, date: e.date, category: e.category,
+    amount: Number(e.amount), date: e.date, category: e.category,
     documentUrl: e.documentUrl ?? undefined,
     year: e.year ?? undefined, month: e.month ?? undefined,
     period: e.period ?? undefined,

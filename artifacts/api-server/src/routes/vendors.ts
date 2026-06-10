@@ -46,7 +46,7 @@ router.get("/vendors", requireAuth, async (req: Request, res: Response) => {
 
   if (role === "merchant") {
     const vendor = await prisma.vendor.findFirst({ where: { userId } });
-    return res.json(vendor ? [vendorToDto(vendor)] : []);
+    res.json(vendor ? [vendorToDto(vendor)] : []); return;
   }
 
   const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
@@ -156,14 +156,14 @@ router.get("/vendor-requests", requireAuth, async (req: Request, res: Response) 
 
   if (role === "merchant") {
     const vendor = await prisma.vendor.findFirst({ where: { userId } });
-    if (!vendor) return res.json([]);
+    if (!vendor) { res.json([]); return; }
     const requests = await prisma.vendorRequest.findMany({
       where: { vendorId: vendor.id },
       orderBy: { createdAt: "desc" },
       take: limit,
       skip: offset,
     });
-    return res.json(requests.map(requestToDto));
+    res.json(requests.map(requestToDto)); return;
   }
 
   const requests = await prisma.vendorRequest.findMany({

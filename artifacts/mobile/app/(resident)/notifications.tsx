@@ -59,7 +59,7 @@ function NotifCard({ n, onRead, userId }: { n: AppNotification; onRead: (id: str
         </View>
       </View>
       <Text style={[styles.cardTitle, { color: colors.foreground }]} numberOfLines={1}>{n.title}</Text>
-      {n.fromName ? (
+      {n.fromName && n.type !== "noise" ? (
         <View style={styles.senderRow}>
           <Feather name="user" size={11} color={colors.mutedForeground} />
           <Text style={[styles.senderText, { color: colors.mutedForeground }]}>{n.fromName}</Text>

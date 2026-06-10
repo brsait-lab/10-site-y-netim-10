@@ -229,7 +229,7 @@ router.post("/payments", requireAuth, blockNonAdmin, requireActiveSubscription()
       performedBy: createdBy,
       performedByName: actorName,
       note: `${body.type}: ${body.title} | ₺${body.amount}`,
-      client: tx,
+      client: tx as import("@prisma/client").Prisma.TransactionClient,
     });
 
     return created;
@@ -293,7 +293,7 @@ router.get("/user-payments", requireAuth, blockSecurity, async (req: Request, re
       skip: offset,
     });
 
-    return res.json(rows.map(toUserPaymentDto));
+    res.json(rows.map(toUserPaymentDto)); return;
   }
 
   const rows = await prisma.userPayment.findMany({
