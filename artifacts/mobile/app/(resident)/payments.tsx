@@ -325,6 +325,21 @@ export default function ResidentPayments() {
         <Text style={{ fontSize: 22, fontFamily: "Inter_700Bold", color: colors.text }}>Ödemelerim</Text>
       </View>
 
+      {site?.iban && (
+        <View style={{ marginHorizontal: 14, marginBottom: 4, backgroundColor: colors.primaryLight, borderRadius: 12, padding: 14, gap: 4, borderWidth: 1, borderColor: colors.primary + "30" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <Feather name="credit-card" size={14} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontSize: 12, fontFamily: "Inter_600SemiBold" }}>Havale / EFT Bilgileri</Text>
+          </View>
+          {site.bankName && <Text style={{ color: colors.text, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{site.bankName}</Text>}
+          {site.accountHolder && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{site.accountHolder}</Text>}
+          <TouchableOpacity onPress={() => Alert.alert("IBAN", site.iban ?? "")}>
+            <Text style={{ color: colors.primary, fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 }}>{site.iban}</Text>
+          </TouchableOpacity>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>IBAN'a dokunarak kopyalayabilirsiniz</Text>
+        </View>
+      )}
+
       <View style={{ flexDirection: "row", marginHorizontal: 14, marginVertical: 8, gap: 10 }}>
         <View style={{ flex: 1, backgroundColor: "#fee2e2", borderRadius: 12, padding: 12 }}>
           <Text style={{ color: "#dc2626", fontSize: 11, fontFamily: "Inter_500Medium" }}>Toplam Borç</Text>

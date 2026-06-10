@@ -180,6 +180,13 @@ export default function ResidentChatsScreen() {
             <Feather name="message-circle" size={44} color={colors.mutedForeground} />
             <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Aktif sohbet yok</Text>
             <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>Yönetici veya güvenlik ile iletişim başlatın</Text>
+            <Pressable
+              onPress={() => setShowModal(true)}
+              style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 8, flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
+              <Feather name="plus" size={16} color="#fff" />
+              <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Yeni Sohbet Başlat</Text>
+            </Pressable>
           </View>
         )}
         {tab === "closed" && closedChats.length === 0 && (

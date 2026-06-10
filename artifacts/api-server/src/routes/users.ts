@@ -39,11 +39,14 @@ router.get("/users", requireAuth, blockRoles("merchant"), async (req: Request, r
 
   const roleFilter = (req.query["role"] as string) ?? null;
 
-  // Admins can query global merchants (siteId="global") via ?role=merchant
+  // All roles can query global merchants via ?role=merchant (merchants are siteId="global")
+  // Admins can see other roles within their site
   const whereClause =
-    roleFilter === "merchant" && role === "admin"
+    roleFilter === "merchant"
       ? { role: "merchant" as const, deletedAt: null }
-      : { siteId, deletedAt: null };
+      : roleFilter && role === "admin"
+        ? { siteId, role: roleFilter as "resident" | "admin" | "security", deletedAt: null }
+        : { siteId, deletedAt: null };
 
   const users = await prisma.user.findMany({
     where: whereClause,

@@ -85,6 +85,7 @@ export default function ResidentNotificationsScreen() {
   const params = useLocalSearchParams<{ action?: string }>();
 
   const [tab, setTab] = useState<"inbox" | "send">("inbox");
+  const [inboxTypeFilter, setInboxTypeFilter] = useState<NotificationType | "all">("all");
   const [notifType, setNotifType] = useState<NotificationType>("noise");
   const [targetMode, setTargetMode] = useState<TargetMode>("admin");
   const [title, setTitle] = useState("");
@@ -100,8 +101,12 @@ export default function ResidentNotificationsScreen() {
   useEffect(() => {
     if (paramsApplied.current) return;
     paramsApplied.current = true;
-    if (params.action === "cargo") { setTab("send"); setNotifType("cargo"); setTargetMode("security"); }
-    else if (params.action === "noise") { setTab("send"); setNotifType("noise"); setTargetMode("daire"); }
+    if (params.action === "cargo") {
+      setTab("inbox");
+      setInboxTypeFilter("cargo");
+    } else if (params.action === "noise") {
+      setTab("send"); setNotifType("noise"); setTargetMode("daire");
+    }
   }, [params.action]);
 
   // Enforce target mode based on notification type
@@ -122,7 +127,10 @@ export default function ResidentNotificationsScreen() {
 
   useEffect(() => { if (tab === "send") loadResidents(); }, [tab, loadResidents]);
 
-  const myNotifs = getMyNotifications();
+  const allMyNotifs = getMyNotifications();
+  const myNotifs = inboxTypeFilter === "all"
+    ? allMyNotifs
+    : allMyNotifs.filter((n) => n.type === inboxTypeFilter);
   const userId = user?.id ?? "";
   const unread = myNotifs.filter((n) => !n.readBy.includes(userId));
   const read = myNotifs.filter((n) => n.readBy.includes(userId));
@@ -183,10 +191,25 @@ export default function ResidentNotificationsScreen() {
 
       {tab === "inbox" ? (
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+          {inboxTypeFilter !== "all" && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 4 }}>
+              <View style={[styles.catPill, { backgroundColor: (TYPE_META[inboxTypeFilter]?.color ?? "#64748b") + "20", borderRadius: 20 }]}>
+                <Feather name={TYPE_META[inboxTypeFilter]?.icon ?? "bell"} size={12} color={TYPE_META[inboxTypeFilter]?.color ?? "#64748b"} />
+                <Text style={[styles.catText, { color: TYPE_META[inboxTypeFilter]?.color ?? "#64748b" }]}>
+                  {TYPE_META[inboxTypeFilter]?.label ?? inboxTypeFilter} bildirimleri
+                </Text>
+              </View>
+              <Pressable onPress={() => setInboxTypeFilter("all")} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, backgroundColor: colors.muted }}>
+                <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: colors.mutedForeground }}>Tümünü Göster</Text>
+              </Pressable>
+            </View>
+          )}
           {myNotifs.length === 0 ? (
             <View style={styles.empty}>
               <Feather name="bell" size={44} color={colors.mutedForeground} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Bildirim yok</Text>
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                {inboxTypeFilter !== "all" ? `${TYPE_META[inboxTypeFilter]?.label ?? "Kargo"} bildirimi yok` : "Bildirim yok"}
+              </Text>
               <Text style={[styles.emptyDesc, { color: colors.mutedForeground }]}>Gelen bildirimler burada görünecek</Text>
             </View>
           ) : (

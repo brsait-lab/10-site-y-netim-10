@@ -110,15 +110,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setLoadError(null);
     const isMerchant = user.role === "merchant";
+    const isSecurity = user.role === "security";
     try {
       const [n, p, up, m, pk, ch, ex, ds] = await Promise.all([
         isMerchant ? Promise.resolve([]) : getNotifications(),
-        isMerchant ? Promise.resolve([]) : getPayments(),
-        isMerchant ? Promise.resolve([]) : getUserPayments(),
+        (isMerchant || isSecurity) ? Promise.resolve([]) : getPayments(),
+        (isMerchant || isSecurity) ? Promise.resolve([]) : getUserPayments(),
         isMerchant ? Promise.resolve([]) : getMessages({}),
         isMerchant ? Promise.resolve([]) : getPackages(),
         getChats(),
-        (!isMerchant && user.role !== "security") ? apiGetExpenses() : Promise.resolve([]),
+        (!isMerchant && !isSecurity) ? apiGetExpenses() : Promise.resolve([]),
         user.role === "admin" ? apiGetDashboardStats() : Promise.resolve(null),
       ]);
       setNotifications(n as AppNotification[]);

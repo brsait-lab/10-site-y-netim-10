@@ -1,0 +1,155 @@
+Yeni özellik geliştirmeyelim.
+
+Öncelik beta öncesi kritik hata düzeltmeleri.
+
+Aşağıdaki sorunlar gerçek kullanım sırasında tespit edildi.
+
+Her biri için:
+
+* Kök neden analizi yap
+* Düzelt
+* Gerçek test yap
+* PASS / FAIL raporu ver
+
+═══════════════════════
+
+1. Resident → Esnaf Kartı
+   ═══════════════════════
+
+Beklenen:
+
+* Kayıtlı esnaflar
+* Yakındaki esnaflar
+
+Mevcut:
+
+* Normal sakin kullanıcılar da listede görünüyor.
+
+Kontrol et:
+
+* API filtreleri
+* Rol filtreleri
+* DataContext veri kaynağı
+
+Sadece merchant/vendor kayıtları görünmeli.
+
+═══════════════════════
+2) Resident → Kargo Kartı
+═══════════════════════
+
+Beklenen:
+
+* Sadece kargo bildirimleri
+
+Mevcut:
+
+* Gürültü bildirimleri de burada görünüyor.
+
+Kontrol et:
+
+* Notification type filtreleri
+* Dashboard kart veri kaynağı
+* Kargo kartı sayacı
+
+Kargo kartı yalnızca cargo tipini göstermeli.
+
+═══════════════════════
+3) Resident → Sohbet Kartı
+═══════════════════════
+
+Beklenen:
+
+* Sohbet yoksa boş sohbet ekranı açılmalı
+* Yeni sohbet oluşturma akışı görünmeli
+
+Mevcut:
+
+* Sohbet kartı boş durumda düzgün çalışmıyor
+
+Kontrol et:
+
+* /(resident)/chats
+* Empty state
+* Navigation
+* İlk sohbet oluşturma akışı
+
+Gerçek cihaz senaryosu ile doğrula.
+
+═══════════════════════
+4) Resident → Ödemeler
+═══════════════════════
+
+Beklenen:
+
+* Yönetici tarafından tanımlanan IBAN görünmeli
+
+Mevcut:
+
+* IBAN bilgisi görünmüyor
+
+Kontrol et:
+
+* Admin ayarlarındaki banka bilgileri
+* API response
+* Payment ekranı
+
+Sakin ödeme ekranında IBAN görünür olmalı.
+
+═══════════════════════
+5) Security Paneli
+═══════════════════════
+
+Kritik hata:
+
+Güvenlik hesabıyla giriş yapınca:
+
+* Kartlar görünmüyor
+* Dashboard yüklenmiyor
+* "Veri yüklenemedi" mesajı geliyor
+
+Kontrol et:
+
+* Security dashboard
+* DataContext yükleme akışı
+* API çağrıları
+* Yetki kontrolleri
+* Promise.all zinciri
+* LoadError kaynağı
+
+İstediğim şey:
+
+* Hangi endpoint hata veriyor?
+* Hangi exception oluşuyor?
+* Kök neden nedir?
+* Düzeltme nedir?
+
+Gerçek security hesabıyla test edip PASS/FAIL raporu ver.
+
+═══════════════════════
+6) Sunucu Hatası
+═══════════════════════
+
+Yeni geliştirme yapmadan önce:
+
+* Son server loglarını incele
+* Stack trace paylaş
+* Hatanın kök nedenini bul
+
+Özellikle doğrula:
+
+* PostgreSQL
+* Redis
+* BullMQ
+* Socket.IO
+
+Eğer sorun gerçekten DATABASE_URL veya DB bağlantısı ise ancak o zaman fail-fast startup DB connectivity check ekleyelim.
+
+Önce hata analizi, sonra çözüm.
+
+İstediğim çıktı:
+
+* Her madde için kök neden
+* Yapılan düzeltme
+* PASS / FAIL sonucu
+* Sunucu hatasının gerçek nedeni
+* Beta'yı engelleyen açık blocker kaldı mı?
