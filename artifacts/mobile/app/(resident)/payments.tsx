@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 import { useColors } from "@/hooks/useColors";
 import { useData, type UserPayment, type Payment, type Expense } from "@/context/DataContext";
 import { useAuth } from "@/context/AuthContext";
@@ -67,6 +68,13 @@ export default function ResidentPayments() {
   const [site, setSite] = useState<SiteDto | null>(null);
   const [dekont, setDekont] = useState<DekontModal>(INITIAL_DEKONT);
   const [submitting, setSubmitting] = useState(false);
+  const [ibanCopied, setIbanCopied] = useState(false);
+
+  const copyIban = useCallback(async (iban: string) => {
+    await Clipboard.setStringAsync(iban);
+    setIbanCopied(true);
+    setTimeout(() => setIbanCopied(false), 2000);
+  }, []);
 
   useEffect(() => {
     if (user?.siteId) {
@@ -236,7 +244,7 @@ export default function ResidentPayments() {
                 <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: "Inter_500Medium" }}>Havale/EFT Bilgileri</Text>
                 {site.bankName && <Text style={{ color: colors.text, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{site.bankName}</Text>}
                 {site.accountHolder && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{site.accountHolder}</Text>}
-                <TouchableOpacity onPress={() => Alert.alert("IBAN Kopyalandı", site.iban ?? "")}>
+                <TouchableOpacity onPress={() => copyIban(site.iban ?? "")}>
                   <Text style={{ color: colors.primary, fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 1 }}>{site.iban}</Text>
                 </TouchableOpacity>
               </View>
@@ -333,10 +341,12 @@ export default function ResidentPayments() {
           </View>
           {site.bankName && <Text style={{ color: colors.text, fontSize: 13, fontFamily: "Inter_600SemiBold" }}>{site.bankName}</Text>}
           {site.accountHolder && <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{site.accountHolder}</Text>}
-          <TouchableOpacity onPress={() => Alert.alert("IBAN", site.iban ?? "")}>
+          <TouchableOpacity onPress={() => copyIban(site.iban ?? "")}>
             <Text style={{ color: colors.primary, fontSize: 13, fontFamily: "Inter_600SemiBold", letterSpacing: 0.8 }}>{site.iban}</Text>
           </TouchableOpacity>
-          <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>IBAN'a dokunarak kopyalayabilirsiniz</Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+            {ibanCopied ? "✓ IBAN kopyalandı!" : "IBAN'a dokunarak kopyalayabilirsiniz"}
+          </Text>
         </View>
       )}
 

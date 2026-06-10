@@ -70,14 +70,23 @@ router.get("/notifications/unread-count", requireAuth, async (req: Request, res:
 });
 
 router.get("/notifications", requireAuth, async (req: Request, res: Response) => {
-  const { siteId } = (req as AuthRequest).authUser;
+  const { siteId, userId, role } = (req as AuthRequest).authUser;
 
   const rawLimit = parseInt((req.query["limit"] as string) ?? "", 10);
   const rawOffset = parseInt((req.query["offset"] as string) ?? "0", 10);
   const limit = Number.isFinite(rawLimit) ? Math.min(rawLimit, MAX_LIMIT) : DEFAULT_LIMIT;
   const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
-  const rows = await notificationService.getForSite(siteId, limit, offset);
+  // Merchants have siteId="global" and can only receive notifications explicitly
+  // addressed to them via toUserIds — query by userId instead of siteId
+  const rows = role === "merchant"
+    ? await prisma.notification.findMany({
+        where: { toUserIds: { has: userId } },
+        orderBy: { createdAt: "desc" },
+        take: Math.min(limit, 500),
+        skip: offset,
+      })
+    : await notificationService.getForSite(siteId, limit, offset);
 
   if (rows.length === 0) {
     res.json([]);

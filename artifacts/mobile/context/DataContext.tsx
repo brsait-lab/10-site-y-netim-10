@@ -113,7 +113,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const isSecurity = user.role === "security";
     try {
       const [n, p, up, m, pk, ch, ex, ds] = await Promise.all([
-        isMerchant ? Promise.resolve([]) : getNotifications(),
+        getNotifications(),
         (isMerchant || isSecurity) ? Promise.resolve([]) : getPayments(),
         (isMerchant || isSecurity) ? Promise.resolve([]) : getUserPayments(),
         isMerchant ? Promise.resolve([]) : getMessages({}),
