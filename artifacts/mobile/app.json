@@ -1,11 +1,11 @@
 {
   "expo": {
     "name": "Site Yönetim",
-    "slug": "mobile",
+    "slug": "site-yonetim",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "siteyonetim",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": false
     },
-    "android": {},
+    "android": {
+      "package": "com.betasite.siteyonetim"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
