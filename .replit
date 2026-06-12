@@ -84,3 +84,5 @@ channel = "stable-25_05"
 [userenv.shared]
 PORT = "3000"
 NODE_ENV = "development"
+JWT_SECRET = "R8wX4mP9zK2tY7qN5sV1cD8jL6hF3aB0uE9rT4nM7xQ2pW5"
+IBAN_SECRET = "Q5mN8vB2kL7xD1pR4tY9wC6aS3eF0jH8uZ5nM2qT7rK4wP1"
