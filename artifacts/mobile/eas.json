@@ -6,6 +6,9 @@
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://3000-41dc0bdf-dd4d-4cac-b207-72b644105a0e-00-2ei8ztrdhqcs8.sisko.replit.dev"
       }
     },
     "production": {
