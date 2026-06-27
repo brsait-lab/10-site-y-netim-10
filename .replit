@@ -2,9 +2,9 @@ modules = ["nodejs-20", "web", "bash"]
 
 [deployment]
 router = "application"
-deploymentTarget = "autoscale"
-run = ["bash", "-c", "cd artifacts/api-server && NODE_ENV=production node --enable-source-maps ./dist/index.mjs"]
-build = ["bash", "-c", "cd artifacts/api-server && pnpm exec prisma generate && pnpm run build"]
+deploymentTarget = "vm"
+run = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
+build = ["bash", "-c", "pnpm install && cd artifacts/api-server && pnpm exec prisma generate && pnpm exec prisma db push && pnpm run build"]
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
