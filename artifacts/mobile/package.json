@@ -59,6 +59,7 @@
     "babel-preset-expo": "^54.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-secure-store": "^15.0.8",
+    "http-proxy-middleware": "^4.1.1",
     "socket.io-client": "^4.8.3"
   }
 }

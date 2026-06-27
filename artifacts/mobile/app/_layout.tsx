@@ -12,6 +12,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { Platform } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -22,9 +23,18 @@ import { SocketProvider } from "@/context/SocketContext";
 
 SplashScreen.preventAutoHideAsync();
 
-const domain = process.env.EXPO_PUBLIC_DOMAIN;
-if (domain) {
-  setBaseUrl(`https://${domain}`);
+if (Platform.OS === "web") {
+  // Web: relative URLs — Metro proxies /api/* to the API server (localhost:3000)
+  setBaseUrl("");
+} else {
+  // Native (iOS/Android): use explicit API URL env var or fall back to domain
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (apiUrl) {
+    setBaseUrl(apiUrl);
+  } else if (domain) {
+    setBaseUrl(`https://${domain}`);
+  }
 }
 
 // Use SecureStore-backed token getter (Keychain on iOS, Keystore on Android).
